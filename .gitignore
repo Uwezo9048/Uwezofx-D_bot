@@ -1,0 +1,24 @@
+# PyInstaller build artifacts
+build/
+dist/
+*.spec
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pkg
+
+# Virtual environment
+venv/
+env/
+ENV/
+
+# IDE files
+.vscode/
+.idea/
+
+# Logs and temporary files
+*.log
+.env
+temp_*.ico
+remembered_login.json

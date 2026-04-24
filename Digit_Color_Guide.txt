@@ -1,0 +1,105 @@
+═══════════════════════════════════════════════════════════════════════════════
+          UWEZO-FX DERIV BOT – DIGIT COLOR CODE & MANUAL TRADING GUIDE
+═══════════════════════════════════════════════════════════════════════════════
+
+WHAT ARE THE COLOR CODES?
+─────────────────────────
+In the "Digit Statistics" section of the app, you see a grid of digits 0 through 9.
+Each digit has a background colour and a percentage number. These colours tell you
+how “hot” or “cold” that digit has been in recent ticks (price changes).
+
+The colours mean:
+
+   🔴 RED      → The digit is appearing MORE OFTEN than usual (recently very active).
+   🟡 YELLOW   → The digit is appearing a bit MORE OFTEN (moderate increase).
+   🔵 BLUE     → The digit is appearing LESS OFTEN than usual (recently quiet).
+   🟢 GREEN    → The digit is appearing a bit LESS OFTEN (moderate decrease).
+   ⚪ NEUTRAL  → The digit's frequency is about normal (no strong change).
+
+The percentages show how often that digit has appeared out of the last 100 ticks
+(100 price changes). For example, if digit '5' shows 12.0% and is RED, it means
+that in the last 100 ticks, the last digit of the price ended with '5' twelve
+times – and it has become even more frequent in the very recent ticks.
+
+HOW ARE THE COLOURS CALCULATED? (For your understanding)
+────────────────────────────────────────────────────────
+The bot looks at two time windows:
+- Long window: last 100 ticks (base rate)
+- Short window: last 20 ticks (recent rate)
+
+If the recent rate is at least 1% higher than the long rate → RED.
+If it is 0.5% to 1% higher → YELLOW.
+If it is at least 1% lower → BLUE.
+If it is 0.5% to 1% lower → GREEN.
+Otherwise → NEUTRAL.
+
+This tells you which digits are suddenly becoming popular (RED/YELLOW) or
+disappearing (BLUE/GREEN) in the very last few ticks.
+
+─────────────────────────────────────────────────────────────────────────────
+HOW TO USE THESE COLOURS FOR MANUAL TRADING
+─────────────────────────────────────────────────────────────────────────────
+
+The bot already has automatic strategies (Over 1-3, Under 6-8, Even, Odd) that
+use these colour rules. But you can also trade manually by looking at the grid
+and deciding for yourself.
+
+🔹 OVER 1-3 (Bet that the next digit will be 4,5,6,7,8, or 9)
+   – Look at digits 0,1,2,3. If they are RED or YELLOW (hot), it means low digits
+     have been appearing a lot – but that often signals they are “overdue” to stop.
+     The OVER strategy actually looks for low digits to be weak (BLUE/GREEN) and
+     high digits to be strong. For manual trading, a simpler rule:
+     If digits 0-3 are mostly NEUTRAL or BLUE/GREEN, and digits 4-9 are mostly
+     RED/YELLOW, then bet OVER.
+
+🔹 UNDER 6-8 (Bet that the next digit will be 0,1,2,3,4, or 5)
+   – Opposite: If digits 6-9 are mostly NEUTRAL or BLUE/GREEN (weak), and
+     digits 0-5 are mostly RED/YELLOW (strong), bet UNDER.
+
+🔹 EVEN (Bet that the next digit will be even: 0,2,4,6,8)
+   – Look at the even digits. If most of them are RED/YELLOW and the odd digits
+     are BLUE/GREEN, bet EVEN.
+
+🔹 ODD (Bet that the next digit will be odd: 1,3,5,7,9)
+   – Opposite: odd digits RED/YELLOW, even digits BLUE/GREEN.
+
+🔹 SPECIFIC DIGIT (Advanced – bet on a single digit)
+   – If one particular digit is strongly RED (e.g., 12% and red) and all others
+     are neutral or blue, you could try betting that exact digit. But this is
+     riskier – the bot does not have a built‑in strategy for single digits.
+
+📌 Important: The colours change with every new tick (every new price update).
+   So wait a few seconds to see a consistent pattern before placing a manual trade.
+
+─────────────────────────────────────────────────────────────────────────────
+HOW TO PLACE A MANUAL TRADE IN THE APP
+─────────────────────────────────────────────────────────────────────────────
+
+1. In the main window, go to the "SMART MANUAL TRADE" section (left side).
+2. Choose the contract type: Rise/Fall, Higher/Lower, Touch/No Touch, Even/Odd,
+   or Over/Under.
+3. Enter the stake amount (how much money you want to risk).
+4. Enter the duration (in minutes for Rise/Fall etc., in ticks for Even/Odd and
+   Over/Under).
+5. Click the appropriate button (e.g., BUY, SELL, EVEN, OVER) based on your
+   analysis of the colour grid.
+
+Example: If you see digits 0-3 are mostly blue/green and digits 4-9 are mostly
+red/yellow, you would choose "Over/Under" contract, then click "OVER 1-3".
+
+The bot will send the trade to Deriv and show the result in the log.
+
+─────────────────────────────────────────────────────────────────────────────
+TIPS FOR BEGINNERS
+─────────────────────────────────────────────────────────────────────────────
+- Start with small stakes (e.g., $1) until you understand how the colours behave.
+- Watch the digit grid for a minute or two before trading – look for a clear trend.
+- Do not rely on colours alone; combine with your own judgement.
+- The bot's "Adaptive" mode automatically switches strategies based on these
+  colours – you can enable that and let the bot trade for you.
+- Manual trading is best for learning; for consistent results, let the bot run
+  in Auto-Trade or Adaptive mode.
+
+═══════════════════════════════════════════════════════════════════════════════
+                    Happy trading! – UWEZO-FX Team
+═══════════════════════════════════════════════════════════════════════════════

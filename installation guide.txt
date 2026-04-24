@@ -1,0 +1,192 @@
+================================================================================
+        UWEZO-FX DERIV TRADING BOT – INSTALLATION GUIDE
+================================================================================
+
+Thank you for choosing UWEZO-FX Deriv Bot. This guide will help you install,
+configure, and run the trading bot on Windows 7 SP1, 8, 8.1, 10, or 11.
+
+================================================================================
+1. SYSTEM REQUIREMENTS
+================================================================================
+
+- Windows 7 SP1, 8, 8.1, 10, or 11 (64‑bit recommended)
+- Internet connection
+- At least 200 MB free disk space
+- A valid Deriv.com account (with API token)
+- Python is NOT required – the bot is a standalone executable
+
+================================================================================
+2. DOWNLOAD THE INSTALLER
+================================================================================
+
+Download the file "UWEZO-Deriv-Bot_Setup_v1.0.exe" from the link provided to you.
+
+If the download does not start automatically, right-click the link and select
+"Save link as...". Save the file to your computer (e.g., Desktop or Downloads).
+
+================================================================================
+3. INSTALL THE APPLICATION
+================================================================================
+
+1. Locate the downloaded installer (e.g., "UWEZO-Deriv-Bot_Setup_v1.0.exe").
+2. Right‑click the installer and select "Run as administrator".
+   (This ensures the bot can write logs and settings.)
+3. If Windows SmartScreen appears, click "More info" → "Run anyway".
+4. Follow the on‑screen instructions:
+   - Choose the installation folder (default: C:\Program Files\UWEZO-Deriv-Bot)
+   - Select optional shortcuts (Desktop, Start Menu, Startup)
+   - Click "Install"
+5. After installation, check "Launch UWEZO-Deriv Bot" and click "Finish".
+
+================================================================================
+4. FIRST RUN – USER REGISTRATION & LOGIN
+================================================================================
+
+The bot uses a Supabase backend for user management. You need to create an
+account (or use an existing one) and log in.
+
+- If you do not have an account:
+  1. On the login screen, click "Create Account".
+  2. Fill in:
+     - Username (at least 3 characters)
+     - Email address (valid)
+     - Phone number (with country code, e.g., +254XXXXXXXXX)
+     - Password (at least 6 characters)
+     - Confirm password
+  3. Click "Register".
+  4. Your account will be pending admin approval.
+  5. You will receive a Login Code via SMS and email once approved.
+  6. Once approved, return to the login screen.
+
+- If you already have an account:
+  1. Enter your Username and the Login Code provided by the admin.
+  2. Click "Login".
+
+After successful login, the main trading dashboard will appear.
+
+================================================================================
+5. SET UP THE TRADING BOT
+================================================================================
+
+Before starting the bot, you must provide your Deriv API token and configure
+trading parameters.
+
+1. Obtain your Deriv API token:
+   - Log into your Deriv.com account.
+   - Go to Settings → API token.
+   - Create a new token with "trade" and "read" permissions.
+   - Copy the token (starts with "xxxxxxxxxxxxxxxxxxxx").
+
+2. In the bot's main window (left side – BOT CONTROL):
+   - Paste the API token into the "API Token" field.
+   - The App ID is pre‑filled with "133059" – leave as is (or change if needed).
+
+3. Configure trading parameters:
+   - Symbol: Select a symbol from the dropdown (e.g., R_100, R_50, 1HZ100V).
+   - Timeframe (for ICT/SMS strategy): choose 1s, 5s, 15s, 1m, etc.
+   - Base Stake: amount per trade (e.g., 1.0 USD).
+   - Duration: minutes (for ICT/SMS) or ticks (for digit strategies).
+   - Cooldown: seconds to wait between trades.
+   - Max Daily Loss: stop trading after losing this amount.
+   - Martingale Multiplier: factor to increase stake after loss (e.g., 2.5).
+   - Max Steps: maximum martingale steps.
+   - Martingale Mode: Classic (increase after loss) or Reverse (increase after win).
+   - Strategy: choose from ICT/SMS, Over 1-3, Under 6-8, Even, Odd.
+   - Confirmations: number of consecutive identical signals required before trading.
+
+4. Select Operation Mode:
+   - Monitor: only show signals, do not trade.
+   - Auto‑Trade: automatically place trades when a signal is confirmed.
+   - Adaptive: automatically switch between digit strategies based on market conditions.
+
+5. Click "▶ RUN BOT". The bot will connect to Deriv and start generating signals.
+   The status panel will show balance, current stake, signal, and confidence.
+
+================================================================================
+6. SMART MANUAL TRADING
+================================================================================
+
+You can also place manual trades directly from the bot:
+
+1. In the "SMART MANUAL TRADE" section:
+   - Choose Contract Type: Rise/Fall, Higher/Lower, Touch/No Touch, Even/Odd, Over/Under.
+   - Enter Stake (amount).
+   - Adjust Duration (minutes or ticks depending on contract).
+2. Click the corresponding action button (BUY, SELL, HIGHER, LOWER, etc.).
+3. The trade will be executed immediately via Deriv's WebSocket API.
+   Results appear in the event log.
+
+================================================================================
+7. UNDERSTANDING THE INTERFACE
+================================================================================
+
+- Left panel: Bot control, manual trading, status indicators.
+- Right panel: Digit statistics (last digit frequency and color codes) and event log.
+- Top bar: Account balance, current stake, live signal, confidence, logout button.
+
+Color coding for digit statistics:
+  - Red / Yellow : digit frequency is decreasing (weak)
+  - Blue / Green : digit frequency is increasing (strong)
+  - Neutral : stable
+
+The event log shows all connection, signal, trade, and error messages.
+
+================================================================================
+8. STOPPING THE BOT
+================================================================================
+
+- Click "⏹ STOP BOT" to stop automatic trading. The WebSocket connection is closed.
+- You can restart the bot anytime by clicking "▶ RUN BOT".
+- Closing the main window stops the bot automatically.
+
+================================================================================
+9. TROUBLESHOOTING
+================================================================================
+
+Problem: "Invalid API token" or connection fails.
+  → Ensure your Deriv API token is correct and has trade permissions.
+  → Check that your Deriv account is funded and active.
+  → Verify your internet connection.
+
+Problem: Bot does not place trades in Auto‑Trade mode.
+  → Check that "Auto‑Trade" mode is selected (not Monitor).
+  → Ensure the signal confidence is high enough (shows on dashboard).
+  → Check cooldown period – trades are spaced by the cooldown seconds.
+  → Verify that Max Daily Loss has not been reached.
+
+Problem: Digit statistics show no data or colors.
+  → This is normal for the first few ticks; the bot needs at least 10‑20 ticks to compute statistics.
+
+Problem: Application crashes or does not start.
+  → Run as Administrator.
+  → Ensure Windows is updated (especially Windows 7 SP1).
+  → Check the log file in %APPDATA%\UWEZO-Deriv-Bot\trading_system.log (if any).
+
+Problem: Missing DLL or module errors when running the EXE.
+  → This should not happen with the provided installer. If it does, reinstall
+    the bot and ensure your antivirus is not blocking the executable.
+
+================================================================================
+10. UNINSTALLATION
+================================================================================
+
+- Go to Windows Settings → Apps → Installed apps.
+- Find "UWEZO-Deriv Bot" and click Uninstall.
+- Alternatively, run the uninstaller from the Start Menu folder.
+- All program files and user data (logs, settings) will be removed.
+
+================================================================================
+11. SUPPORT
+================================================================================
+
+For assistance, bug reports, or feature requests:
+- Email: uwezofx@gmail.com
+- Telegram: https://t.me/UwezoFXSupport
+- Website: https://www.uwezofx.com
+
+When contacting support, please attach the log file located in:
+%APPDATA%\UWEZO-Deriv-Bot\trading_system.log
+
+================================================================================
+                    © 2025 UWEZO-FX – All rights reserved.
+================================================================================

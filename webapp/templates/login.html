@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Login | UWEZO-FX{% endblock %}
+{% block content %}
+<main class="auth-wrap">
+    <section class="card auth-card">
+        <div class="logo-lockup">
+            <img src="{{ url_for('static', filename='images/icon.png') }}" alt="UWEZO-FX logo" class="page-logo">
+            <div class="brand-mark">UWEZO-FX</div>
+        </div>
+        <h1>Advanced Multi-Strategy Trading Bot</h1>
+        <p class="muted">PythonAnywhere-ready web layout based on your desktop app.</p>
+
+        <form method="post" class="auth-form">
+            <label>
+                <span>Username</span>
+                <input type="text" name="username" placeholder="Enter username">
+            </label>
+
+            <label>
+                <span>Login Code</span>
+                <input type="password" name="login_code" placeholder="Enter login code">
+            </label>
+
+            <div class="button-row">
+                <button class="btn btn-primary" type="submit">Login</button>
+                <a class="btn btn-success" href="{{ url_for('register') }}">Create Account</a>
+                <a class="btn btn-info" href="{{ url_for('reset_password') }}">Forgot Password?</a>
+            </div>
+        </form>
+    </section>
+</main>
+{% endblock %}

@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Register | UWEZO-FX{% endblock %}
+{% block content %}
+<main class="auth-wrap">
+    <section class="card auth-card auth-card-wide">
+        <h1>Create Account</h1>
+        <form method="post" class="auth-form">
+            <label><span>Username</span><input type="text" name="username"></label>
+            <label><span>Email</span><input type="email" name="email"></label>
+            <label><span>Phone (+254...)</span><input type="text" name="phone"></label>
+            <label><span>Password</span><input type="password" name="password"></label>
+            <label><span>Confirm</span><input type="password" name="confirm"></label>
+            <div class="button-row">
+                <button class="btn btn-success" type="submit">Register</button>
+                <a class="btn btn-ghost" href="{{ url_for('login') }}">Back to Login</a>
+            </div>
+        </form>
+    </section>
+</main>
+{% endblock %}
