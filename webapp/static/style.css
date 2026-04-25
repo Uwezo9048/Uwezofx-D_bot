@@ -219,7 +219,14 @@ select:focus {
 .topbar-actions {
     display: flex;
     align-items: center;
-    gap: 18px;
+    gap: 10px;
+}
+
+.topbar-status {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 10px;
+    justify-content: flex-end;
 }
 
 .topbar-logo {
@@ -546,6 +553,10 @@ tbody td {
     .topbar,
     .topbar-actions {
         flex-wrap: wrap;
+    }
+
+    .topbar-status {
+        justify-content: flex-start;
     }
 
     .digit-grid {

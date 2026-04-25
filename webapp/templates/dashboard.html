@@ -7,6 +7,15 @@
         <div class="brand-mark brand-mark-small">UWEZO-FX DERIV BOT</div>
     </div>
     <div class="topbar-actions">
+        <div class="topbar-status">
+            <div class="status-pill status-green">Balance: <span id="metric-balance">{{ state.metrics.balance }}</span></div>
+            <div class="status-pill status-blue">Stake: <span id="metric-stake">{{ state.metrics.stake }}</span></div>
+            <div class="status-pill status-amber">Signal: <span id="metric-signal">{{ state.metrics.signal }}</span></div>
+            <div class="status-pill status-purple">Confidence: <span id="metric-confidence">{{ state.metrics.confidence }}</span></div>
+            <div class="status-pill {% if state.running %}status-green{% else %}status-amber{% endif %}">
+                Bot: <span id="metric-running">{{ "Running" if state.running else "Stopped" }}</span>
+            </div>
+        </div>
         <a class="btn btn-danger" href="{{ url_for('logout') }}">Logout</a>
         <div class="welcome">Welcome, {{ user.username }}</div>
     </div>
@@ -142,16 +151,6 @@
     </aside>
 
     <section class="main-panel">
-        <div class="card status-strip">
-            <div class="status-pill status-green">Balance: <span id="metric-balance">{{ state.metrics.balance }}</span></div>
-            <div class="status-pill status-blue">Stake: <span id="metric-stake">{{ state.metrics.stake }}</span></div>
-            <div class="status-pill status-amber">Signal: <span id="metric-signal">{{ state.metrics.signal }}</span></div>
-            <div class="status-pill status-purple">Confidence: <span id="metric-confidence">{{ state.metrics.confidence }}</span></div>
-            <div class="status-pill {% if state.running %}status-green{% else %}status-amber{% endif %}">
-                Bot: <span id="metric-running">{{ "Running" if state.running else "Stopped" }}</span>
-            </div>
-        </div>
-
         <section class="card nav-workspace">
             <div class="nav-tabs">
                 <button class="nav-tab active" type="button" data-tab="positions-history">Positions/History</button>
