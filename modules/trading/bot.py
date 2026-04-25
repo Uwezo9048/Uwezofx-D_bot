@@ -79,25 +79,7 @@ class DerivBot:
         self.open_positions = []
 
     def _is_ws_open(self) -> bool:
-        if self.ws is None:
-            return False
-
-        closed = getattr(self.ws, "closed", None)
-        if closed is not None:
-            return not closed
-
-        state = getattr(self.ws, "state", None)
-        if state is not None:
-            state_name = getattr(state, "name", None)
-            if state_name:
-                return state_name.upper() == "OPEN"
-            state_text = str(state).upper()
-            if state_text in {"OPEN", "STATE.OPEN", "1"}:
-                return True
-            with contextlib.suppress(Exception):
-                return int(state) == 1
-
-        return True
+        return self.ws is not None and not getattr(self.ws, "closed", True)
 
     def _fail_pending(self, exc: Exception):
         for fut in list(self.pending.values()):
@@ -257,7 +239,6 @@ class DerivBot:
             action = str(txn.get('action_type', txn.get('action', txn.get('transaction_type', '')))).lower()
             amount = self._safe_float(txn.get('amount', txn.get('amount_for_display', 0)))
             payout = self._safe_float(txn.get('payout', txn.get('payout_price', 0)))
-            sell_price = self._safe_float(txn.get('sell_price', txn.get('sell', txn.get('sell_amount', 0))))
             transaction_time = int(self._safe_float(
                 txn.get('transaction_time', txn.get('time', txn.get('date_start', 0))),
                 0
@@ -273,12 +254,7 @@ class DerivBot:
                     entry['start_ts'] = transaction_time
 
             if is_sell:
-                # `payout` on statement rows can be the quoted payout, not the settled value.
-                # Prefer explicit sell/settlement values and derive from profit later if needed.
-                contract_value = sell_price
-                if not contract_value and amount >= 0:
-                    contract_value = amount
-                entry['sell_price'] = contract_value or entry['sell_price']
+                entry['sell_price'] = abs(amount) if amount else (payout or entry['sell_price'])
                 entry['has_sell'] = True
                 if transaction_time:
                     entry['end_ts'] = transaction_time
@@ -291,13 +267,6 @@ class DerivBot:
         for entry in grouped.values():
             if not entry['has_buy']:
                 continue
-
-            # When profit/loss is available, derive the actual settled contract value from it.
-            # This prevents quoted payout values from making losing trades appear as wins.
-            if entry['buy_price'] > 0 and (entry['profit_loss'] != 0.0 or entry['has_sell']):
-                derived_contract_value = entry['buy_price'] + entry['profit_loss']
-                if derived_contract_value >= 0:
-                    entry['sell_price'] = derived_contract_value
 
             if entry['profit_loss'] == 0.0:
                 if entry['has_sell'] and entry['sell_price'] > 0:
@@ -476,59 +445,6 @@ class DerivBot:
 
         return max(0, min(100, score))
 
-    def _calculate_digit_signal_metrics(self, signal: str) -> tuple[float, int]:
-        stats = self.digit_analyzer.digits
-        if signal == TradeSignal.OVER:
-            favorable_digits = [4, 5, 6, 7, 8, 9]
-            unfavorable_digits = [0, 1, 2, 3]
-            supportive_colors = {'blue', 'green'}
-            weak_colors = {'red', 'yellow'}
-        elif signal == TradeSignal.UNDER:
-            favorable_digits = [0, 1, 2, 3, 4, 5]
-            unfavorable_digits = [6, 7, 8, 9]
-            supportive_colors = {'blue', 'green'}
-            weak_colors = {'red', 'yellow'}
-        elif signal == TradeSignal.EVEN:
-            favorable_digits = [0, 2, 4, 6, 8]
-            unfavorable_digits = [1, 3, 5, 7, 9]
-            supportive_colors = {'blue', 'green'}
-            weak_colors = {'red', 'yellow'}
-        elif signal == TradeSignal.ODD:
-            favorable_digits = [1, 3, 5, 7, 9]
-            unfavorable_digits = [0, 2, 4, 6, 8]
-            supportive_colors = {'blue', 'green'}
-            weak_colors = {'red', 'yellow'}
-        else:
-            return 0.0, 0
-
-        favorable_pct = sum(stats[d].percentage for d in favorable_digits)
-        unfavorable_pct = sum(stats[d].percentage for d in unfavorable_digits)
-        edge = favorable_pct - unfavorable_pct
-
-        supportive_count = sum(
-            1 for d in favorable_digits
-            if stats[d].color in supportive_colors and stats[d].percentage >= 10.0
-        )
-        weak_count = sum(
-            1 for d in unfavorable_digits
-            if stats[d].color in weak_colors and stats[d].percentage <= 10.0
-        )
-        hostile_count = sum(
-            1 for d in unfavorable_digits
-            if stats[d].color in supportive_colors and stats[d].percentage >= 10.5
-        )
-
-        confidence = 50 + int(edge * 1.4) + (supportive_count * 4) + (weak_count * 3) - (hostile_count * 6)
-        confidence = max(0, min(100, confidence))
-        return edge, confidence
-
-    def _digit_trade_allowed(self, signal: str) -> tuple[bool, int, float]:
-        edge, confidence = self._calculate_digit_signal_metrics(signal)
-        min_edge = float(getattr(self.config, 'min_digit_edge', 8.0))
-        min_confidence = int(getattr(self.config, 'min_digit_confidence', 62))
-        allowed = edge >= min_edge and confidence >= min_confidence
-        return allowed, confidence, edge
-
     async def _check_digit_strategy_entry(self, current_digit: int, strategy: str) -> Optional[str]:
         stats = self.digit_analyzer.digits
         if strategy == "OVER":
@@ -547,16 +463,9 @@ class DerivBot:
                         self.digit_trigger_state.clear()
                         self.log_message("OVER: Timeout")
                     elif current_digit in [4,5,6,7,8,9]:
-                        allowed, confidence, edge = self._digit_trade_allowed(TradeSignal.OVER)
-                        self.update_confidence_display(confidence)
                         self.digit_setup_active = None
                         self.digit_trigger_state.clear()
-                        if allowed:
-                            return TradeSignal.OVER
-                        self.log_message(
-                            f"OVER blocked: edge {edge:.1f}% / confidence {confidence}% below threshold",
-                            "DEBUG"
-                        )
+                        return TradeSignal.OVER
         elif strategy == "UNDER":
             weak_digits = [d for d in [6,7,8,9] if stats[d].color in ['red', 'yellow'] and stats[d].percentage < 10.0]
             if weak_digits:
@@ -573,16 +482,9 @@ class DerivBot:
                         self.digit_trigger_state.clear()
                         self.log_message("UNDER: Timeout")
                     elif current_digit in [0,1,2,3,4]:
-                        allowed, confidence, edge = self._digit_trade_allowed(TradeSignal.UNDER)
-                        self.update_confidence_display(confidence)
                         self.digit_setup_active = None
                         self.digit_trigger_state.clear()
-                        if allowed:
-                            return TradeSignal.UNDER
-                        self.log_message(
-                            f"UNDER blocked: edge {edge:.1f}% / confidence {confidence}% below threshold",
-                            "DEBUG"
-                        )
+                        return TradeSignal.UNDER
         elif strategy == "EVEN":
             weak_digits = [d for d in [1,3,5,7,9] if stats[d].color in ['red', 'yellow'] and stats[d].percentage <= 9.5]
             if weak_digits:
@@ -597,16 +499,9 @@ class DerivBot:
                         self.digit_setup_active = None
                         self.digit_trigger_state.clear()
                     elif current_digit in [0,2,4,6,8]:
-                        allowed, confidence, edge = self._digit_trade_allowed(TradeSignal.EVEN)
-                        self.update_confidence_display(confidence)
                         self.digit_setup_active = None
                         self.digit_trigger_state.clear()
-                        if allowed:
-                            return TradeSignal.EVEN
-                        self.log_message(
-                            f"EVEN blocked: edge {edge:.1f}% / confidence {confidence}% below threshold",
-                            "DEBUG"
-                        )
+                        return TradeSignal.EVEN
         elif strategy == "ODD":
             weak_digits = [d for d in [0,2,4,6,8] if stats[d].color in ['red', 'yellow'] and stats[d].percentage <= 9.5]
             if weak_digits:
@@ -624,16 +519,9 @@ class DerivBot:
                     elif current_digit in [1,3,5,7,9]:
                         self.digit_trigger_state['consecutive_odds'] = self.digit_trigger_state.get('consecutive_odds', 0) + 1
                         if self.digit_trigger_state['consecutive_odds'] >= 2:
-                            allowed, confidence, edge = self._digit_trade_allowed(TradeSignal.ODD)
-                            self.update_confidence_display(confidence)
                             self.digit_setup_active = None
                             self.digit_trigger_state.clear()
-                            if allowed:
-                                return TradeSignal.ODD
-                            self.log_message(
-                                f"ODD blocked: edge {edge:.1f}% / confidence {confidence}% below threshold",
-                                "DEBUG"
-                            )
+                            return TradeSignal.ODD
                     else:
                         self.digit_trigger_state['consecutive_odds'] = 0
         return None
@@ -1049,7 +937,7 @@ class DerivBot:
         return True
 
     async def get_trade_history(self, limit=50):
-        """Retrieve grouped contract history for the history view."""
+        """Retrieve contract-style history that looks closer to Deriv's website report."""
         statement_resp = await self._send({
             "statement": 1,
             "limit": max(limit * 4, 100),
@@ -1060,15 +948,52 @@ class DerivBot:
                 statement_resp['statement']['transactions'],
                 limit
             )
+            if rows:
+                if self.trade_history_callback:
+                    self.trade_history_callback(rows)
+                return rows
+            self.log_message("Statement history returned no contracts, falling back to profit_table", "WARN")
+        elif 'error' in statement_resp:
+            self.log_message(f"Statement history error: {statement_resp['error']['message']}", "WARN")
+
+        resp = await self._send({"profit_table": 1, "limit": limit})
+        if 'error' in resp:
+            self.log_message(f"Profit table error: {resp['error']['message']}", "ERROR")
+            return []
+        if 'profit_table' in resp and 'transactions' in resp['profit_table']:
+            rows = []
+            for txn in resp['profit_table']['transactions']:
+                contract_id = txn.get('contract_id')
+                contract_type = txn.get('contract_type')
+                buy_price, sell_price, payout = self._extract_trade_amounts(txn)
+                profit_loss = self._resolve_history_profit_loss(txn)
+                display_sell_price = sell_price if sell_price > 0 else payout
+                rows.append({
+                    'type': contract_type or '',
+                    'contract_type': contract_type or '',
+                    'ref_id': contract_id,
+                    'contract_id': contract_id,
+                    'currency': self.account_currency,
+                    'buy_time': self._format_report_time(txn.get('start_time', 0)),
+                    'start_time': self._format_report_time(txn.get('start_time', 0)),
+                    'stake': buy_price,
+                    'buy_price': buy_price,
+                    'sell_time': self._format_report_time(txn.get('end_time', txn.get('start_time', 0))),
+                    'end_time': self._format_report_time(txn.get('end_time', txn.get('start_time', 0))),
+                    'contract_value': display_sell_price,
+                    'payout': display_sell_price,
+                    'sell_price': display_sell_price,
+                    'profit_loss': profit_loss,
+                    '_sort_ts': int(self._safe_float(txn.get('end_time', txn.get('start_time', 0)), 0)),
+                })
+            rows.sort(key=lambda row: row.get('_sort_ts', 0), reverse=True)
             if self.trade_history_callback:
                 self.trade_history_callback(rows)
             return rows
-        elif 'error' in statement_resp:
-            self.log_message(f"Statement history error: {statement_resp['error']['message']}", "ERROR")
-
-        if self.trade_history_callback:
-            self.trade_history_callback([])
-        return []
+        else:
+            if self.trade_history_callback:
+                self.trade_history_callback([])
+            return []
 
     async def manual_trade_generic(self, contract_type: str, stake: float, duration_value: int, duration_unit: str, barrier: str = None):
         proposal_msg = {
@@ -1220,15 +1145,14 @@ class DerivBot:
     async def stop(self):
         self.running = False
         self._fail_pending(asyncio.CancelledError())
-        tasks_to_cancel = [
-            self._message_loop_task,
-            self._trade_executor_task,
-            self._ping_task,
-            self._trade_history_task,
-        ]
-        for task in tasks_to_cancel:
-            if task and not task.done():
-                task.cancel()
+        if self._message_loop_task:
+            self._message_loop_task.cancel()
+        if self._trade_executor_task:
+            self._trade_executor_task.cancel()
+        if self._ping_task:
+            self._ping_task.cancel()
+        if self._trade_history_task:
+            self._trade_history_task.cancel()
         if self.ws:
             with contextlib.suppress(Exception):
                 if self._is_ws_open():
@@ -1236,14 +1160,6 @@ class DerivBot:
             with contextlib.suppress(Exception):
                 await self.ws.wait_closed()
             self.ws = None
-        await asyncio.gather(
-            *(task for task in tasks_to_cancel if task is not None),
-            return_exceptions=True,
-        )
-        self._message_loop_task = None
-        self._trade_executor_task = None
-        self._ping_task = None
-        self._trade_history_task = None
         self.consecutive = 0
         self.current_stake = self.config.base_stake
         if self.update_stake:

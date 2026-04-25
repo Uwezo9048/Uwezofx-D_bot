@@ -4,28 +4,28 @@
 <header class="topbar">
     <div class="topbar-brand">
         <img src="{{ url_for('static', filename='images/icon.png') }}" alt="UWEZO-FX logo" class="topbar-logo">
-        <div>
-            <div class="brand-mark brand-mark-small">UWEZO-FX DERIV BOT</div>
-            <div class="welcome">Welcome, {{ user.username }}</div>
-        </div>
+        <div class="brand-mark brand-mark-small">UWEZO-FX DERIV BOT</div>
     </div>
-    <a class="btn btn-ghost" href="{{ url_for('logout') }}">Logout</a>
+    <div class="topbar-actions">
+        <a class="btn btn-danger" href="{{ url_for('logout') }}">Logout</a>
+        <div class="welcome">Welcome, {{ user.username }}</div>
+    </div>
 </header>
 
 <main class="dashboard-shell">
     <aside class="card sidebar">
-        <h2>Bot Settings</h2>
+        <div class="section-title">Trading Settings</div>
         <form method="post" action="{{ url_for('start_bot') }}">
             <div class="settings-grid">
-                <label>
+                <label class="field-row field-row-wide">
                     <span>API Token</span>
                     <input type="password" name="token" placeholder="Enter Deriv API token">
                 </label>
-                <label>
+                <label class="field-row">
                     <span>App ID</span>
                     <input type="text" name="app_id" value="{{ state.config.app_id }}">
                 </label>
-                <label>
+                <label class="field-row">
                     <span>Symbol</span>
                     <select name="symbol">
                         {% for symbol in symbols %}
@@ -33,63 +33,27 @@
                         {% endfor %}
                     </select>
                 </label>
-                <label>
-                    <span>Strategy</span>
-                    <select name="strategy">
-                        {% for strategy in strategy_options %}
-                        <option value="{{ strategy }}" {% if strategy == state.config.strategy %}selected{% endif %}>{{ strategy }}</option>
-                        {% endfor %}
-                    </select>
-                </label>
-                <label>
-                    <span>Stake</span>
+                <label class="field-row">
+                    <span>Base Stake</span>
                     <input type="text" name="stake" value="{{ state.config.stake }}">
                 </label>
-                <label>
-                    <span>Duration</span>
-                    <input type="text" name="duration" value="{{ state.config.duration }}">
-                </label>
-                <label>
-                    <span>Ticks Duration</span>
-                    <input type="text" name="ticks_duration" value="{{ state.config.ticks_duration }}">
-                </label>
-                <label>
-                    <span>Timeframe</span>
-                    <select name="timeframe">
-                        {% for timeframe in timeframe_options %}
-                        <option value="{{ timeframe }}" {% if timeframe == state.config.timeframe %}selected{% endif %}>{{ timeframe }}</option>
-                        {% endfor %}
-                    </select>
-                </label>
-                <label>
-                    <span>Cooldown</span>
+                <label class="field-row">
+                    <span>Cooldown (s)</span>
                     <input type="text" name="cooldown" value="{{ state.config.cooldown }}">
                 </label>
-                <label>
+                <label class="field-row">
                     <span>Max Daily Loss</span>
                     <input type="text" name="max_daily_loss" value="{{ state.config.max_daily_loss }}">
                 </label>
-                <label>
-                    <span>Martingale Multiplier</span>
+                <label class="field-row">
+                    <span>Martingale Mult</span>
                     <input type="text" name="martingale_mult" value="{{ state.config.martingale_mult }}">
                 </label>
-                <label>
+                <label class="field-row">
                     <span>Max Steps</span>
                     <input type="text" name="max_martingale_steps" value="{{ state.config.max_martingale_steps }}">
                 </label>
-                <label>
-                    <span>Confirmations</span>
-                    <input type="text" name="confirmations" value="{{ state.config.confirmations }}">
-                </label>
-                <label>
-                    <span>Mode</span>
-                    <select name="mode">
-                        {% for mode in mode_options %}
-                        <option value="{{ mode }}" {% if mode == state.config.mode %}selected{% endif %}>{{ mode }}</option>
-                        {% endfor %}
-                    </select>
-                </label>
-                <label>
+                <label class="field-row field-row-wide">
                     <span>Martingale Mode</span>
                     <select name="martingale_mode">
                         {% for option in martingale_options %}
@@ -97,43 +61,59 @@
                         {% endfor %}
                     </select>
                 </label>
+                <label class="field-row field-row-wide">
+                    <span>Strategy</span>
+                    <select name="strategy">
+                        {% for strategy in strategy_options %}
+                        <option value="{{ strategy }}" {% if strategy == state.config.strategy %}selected{% endif %}>{{ strategy }}</option>
+                        {% endfor %}
+                    </select>
+                </label>
+                <label class="field-row">
+                    <span>Duration</span>
+                    <input type="text" name="duration" value="{{ state.config.duration }}">
+                </label>
+                <label class="field-row">
+                    <span>Ticks Duration</span>
+                    <input type="text" name="ticks_duration" value="{{ state.config.ticks_duration }}">
+                </label>
+                <label class="field-row">
+                    <span>Timeframe</span>
+                    <select name="timeframe">
+                        {% for timeframe in timeframe_options %}
+                        <option value="{{ timeframe }}" {% if timeframe == state.config.timeframe %}selected{% endif %}>{{ timeframe }}</option>
+                        {% endfor %}
+                    </select>
+                </label>
+                <label class="field-row">
+                    <span>Confirmations</span>
+                    <input type="text" name="confirmations" value="{{ state.config.confirmations }}">
+                </label>
             </div>
 
-            <div class="button-row">
-                <button class="btn btn-success" type="submit">Run Bot</button>
-            </div>
-        </form>
-
-        <div class="button-row top-gap">
-            <form method="post" action="{{ url_for('stop_bot') }}">
-                <button class="btn btn-danger" type="submit">Stop Bot</button>
-            </form>
-            <form method="post" action="{{ url_for('reset_martingale') }}">
-                <button class="btn btn-warning" type="submit">Reset Martingale</button>
-            </form>
-            <form method="post" action="{{ url_for('refresh_bot_data') }}">
-                <button class="btn btn-info" type="submit">Refresh Data</button>
-            </form>
-        </div>
-
-        <div class="section-divider"></div>
-
-        <h3>Change Mode</h3>
-        <form method="post" action="{{ url_for('set_mode') }}" class="mode-form">
-            <select name="mode">
+            <div class="mode-radios">
+                <span class="mode-radios-label">Mode:</span>
                 {% for mode in mode_options %}
-                <option value="{{ mode }}" {% if mode == state.config.mode %}selected{% endif %}>{{ mode }}</option>
+                <label class="radio-pill">
+                    <input type="radio" name="mode" value="{{ mode }}" {% if mode == state.config.mode %}checked{% endif %}>
+                    <span>{{ mode }}</span>
+                </label>
                 {% endfor %}
-            </select>
-            <button class="btn btn-primary" type="submit">Apply Mode</button>
+            </div>
+
+            <div class="button-row action-grid">
+                <button class="btn btn-success" type="submit">Run Bot</button>
+                <button class="btn btn-danger" type="submit" formaction="{{ url_for('stop_bot') }}">Stop Bot</button>
+                <button class="btn btn-warning" type="submit" formaction="{{ url_for('reset_martingale') }}">Reset Martingale</button>
+            </div>
         </form>
 
         <div class="section-divider"></div>
 
-        <h3>Manual Trade</h3>
+        <div class="section-title section-title-small">Manual Trade</div>
         <form method="post" action="{{ url_for('manual_trade') }}">
             <div class="settings-grid">
-                <label>
+                <label class="field-row field-row-wide">
                     <span>Contract</span>
                     <select name="manual_contract">
                         {% for option in manual_contract_options %}
@@ -141,11 +121,11 @@
                         {% endfor %}
                     </select>
                 </label>
-                <label>
+                <label class="field-row">
                     <span>Stake</span>
                     <input type="text" name="manual_stake" value="{{ state.config.manual_stake }}">
                 </label>
-                <label>
+                <label class="field-row">
                     <span>Duration</span>
                     <input type="text" name="manual_duration" value="{{ state.config.manual_duration }}">
                 </label>
@@ -154,6 +134,7 @@
             <div class="button-row">
                 <button class="btn btn-success" type="submit" name="action" value="buy">Buy</button>
                 <button class="btn btn-danger" type="submit" name="action" value="sell">Sell</button>
+                <button class="btn btn-info" type="submit" formaction="{{ url_for('refresh_bot_data') }}">Refresh Data</button>
             </div>
         </form>
     </aside>
@@ -169,124 +150,150 @@
             </div>
         </div>
 
-        <div class="tabs">
-            <div class="tab-labels">
-                <span class="tab-label active">Positions / History</span>
-                <span class="tab-label">Digit Stats</span>
-                <span class="tab-label">Bot Logs</span>
+        <section class="card nav-workspace">
+            <div class="nav-tabs">
+                <button class="nav-tab active" type="button" data-tab="positions-history">Positions/History</button>
+                <button class="nav-tab" type="button" data-tab="digit-stats">Digit Stats</button>
+                <button class="nav-tab" type="button" data-tab="event-log">Event Log</button>
             </div>
 
-            <section class="card panel-block">
-                <div class="panel-head">
-                    <h2>Open Positions</h2>
-                    <div class="muted">Live portfolio data</div>
+            <section class="tab-panel active" data-panel="positions-history">
+                <div class="sub-tabs">
+                    <button class="sub-tab active" type="button" data-subtab="open-positions">Open Positions</button>
+                    <button class="sub-tab" type="button" data-subtab="trade-history">Trade History</button>
                 </div>
-                <div class="table-wrap">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>ID</th>
-                                <th>Type</th>
-                                <th>Buy Price</th>
-                                <th>Current</th>
-                                <th>Payout</th>
-                                <th>P&amp;L</th>
-                                <th>Status</th>
-                                <th>Action</th>
-                            </tr>
-                        </thead>
-                        <tbody id="positions-body">
-                            {% for row in state.positions %}
-                            <tr>
-                                <td>{{ row.id }}</td>
-                                <td>{{ row.type }}</td>
-                                <td>{{ row.buy_price }}</td>
-                                <td>{{ row.current }}</td>
-                                <td>{{ row.payout }}</td>
-                                <td class="{{ 'profit' if '+' in row.pl else 'loss' if '-' in row.pl else '' }}">{{ row.pl }}</td>
-                                <td>{{ row.status }}</td>
-                                <td>
-                                    <form method="post" action="{{ url_for('close_position') }}">
-                                        <input type="hidden" name="contract_id" value="{{ row.id }}">
-                                        <button class="btn btn-danger btn-small" type="submit">Close</button>
-                                    </form>
-                                </td>
-                            </tr>
-                            {% else %}
-                            <tr><td colspan="8" class="empty-state">No open positions yet.</td></tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
+
+                <section class="sub-panel active" data-subpanel="open-positions">
+                    <div class="panel-block nav-panel-card">
+                        <div class="panel-head">
+                            <h2>Open Positions</h2>
+                            <div class="muted">Live portfolio data</div>
+                        </div>
+                        <div class="table-wrap">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>Type</th>
+                                        <th>Buy Price</th>
+                                        <th>Current</th>
+                                        <th>Payout</th>
+                                        <th>P&amp;L</th>
+                                        <th>Status</th>
+                                        <th>Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="positions-body">
+                                    {% for row in state.positions %}
+                                    <tr>
+                                        <td>{{ row.id }}</td>
+                                        <td>{{ row.type }}</td>
+                                        <td>{{ row.buy_price }}</td>
+                                        <td>{{ row.current }}</td>
+                                        <td>{{ row.payout }}</td>
+                                        <td class="{{ 'profit' if '+' in row.pl else 'loss' if '-' in row.pl else '' }}">{{ row.pl }}</td>
+                                        <td>{{ row.status }}</td>
+                                        <td>
+                                            <form method="post" action="{{ url_for('close_position') }}">
+                                                <input type="hidden" name="contract_id" value="{{ row.id }}">
+                                                <button class="btn btn-danger btn-small" type="submit">Close</button>
+                                            </form>
+                                        </td>
+                                    </tr>
+                                    {% else %}
+                                    <tr><td colspan="8" class="empty-state">No open positions yet.</td></tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="sub-panel" data-subpanel="trade-history">
+                    <div class="panel-block nav-panel-card">
+                        <div class="panel-head">
+                            <h2>Deriv Profit Table</h2>
+                            <div class="history-summary">
+                                <span>Contract Report</span>
+                                <strong id="history-total" class="{{ 'profit' if '+' in state.history_total else 'loss' if '-' in state.history_total else '' }}">
+                                    Net Profit/Loss: {{ state.history_total }}
+                                </strong>
+                            </div>
+                        </div>
+                        <div class="history-toolbar">
+                            <form method="post" action="{{ url_for('refresh_bot_data') }}">
+                                <button class="btn btn-info" type="submit">Refresh History</button>
+                            </form>
+                        </div>
+                        <div class="table-wrap history-table-wrap">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Type</th>
+                                        <th>Ref. ID</th>
+                                        <th>Currency</th>
+                                        <th>Buy time</th>
+                                        <th>Stake</th>
+                                        <th>Sell time</th>
+                                        <th>Contract</th>
+                                        <th>Profit/Loss</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="history-body">
+                                    {% for row in state.history %}
+                                    <tr>
+                                        <td>{{ row.type }}</td>
+                                        <td>{{ row.ref_id }}</td>
+                                        <td>{{ row.currency }}</td>
+                                        <td>{{ row.buy_time }}</td>
+                                        <td>{{ row.stake }}</td>
+                                        <td>{{ row.sell_time }}</td>
+                                        <td>{{ row.contract }}</td>
+                                        <td class="{{ 'profit' if '+' in row.profit_loss else 'loss' if '-' in row.profit_loss else '' }}">{{ row.profit_loss }}</td>
+                                    </tr>
+                                    {% else %}
+                                    <tr><td colspan="8" class="empty-state">No trade history yet.</td></tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
             </section>
 
-            <section class="card panel-block">
-                <div class="panel-head">
-                    <h2>Trade History</h2>
-                    <div class="history-summary">
-                        <span>Contract Report</span>
-                        <strong id="history-total" class="{{ 'profit' if '+' in state.history_total else 'loss' if '-' in state.history_total else '' }}">
-                            Net Profit/Loss: {{ state.history_total }}
-                        </strong>
+            <section class="tab-panel" data-panel="digit-stats">
+                <div class="panel-block nav-panel-card">
+                    <div class="panel-head">
+                        <h2>Digit Stats</h2>
+                        <div class="muted">Live digit distribution</div>
+                    </div>
+                    <div class="digit-grid" id="digit-grid">
+                        {% for item in state.digits %}
+                        <div class="digit-card">
+                            <div class="digit-tone tone-{{ item.tone }}">{{ item.digit }}</div>
+                            <div class="digit-percent">{{ item.percent }}%</div>
+                        </div>
+                        {% endfor %}
                     </div>
                 </div>
-                <div class="table-wrap">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Type</th>
-                                <th>Ref. ID</th>
-                                <th>Currency</th>
-                                <th>Buy time</th>
-                                <th>Stake</th>
-                                <th>Sell time</th>
-                                <th>Contract</th>
-                                <th>Profit/Loss</th>
-                            </tr>
-                        </thead>
-                        <tbody id="history-body">
-                            {% for row in state.history %}
-                            <tr>
-                                <td>{{ row.type }}</td>
-                                <td>{{ row.ref_id }}</td>
-                                <td>{{ row.currency }}</td>
-                                <td>{{ row.buy_time }}</td>
-                                <td>{{ row.stake }}</td>
-                                <td>{{ row.sell_time }}</td>
-                                <td>{{ row.contract }}</td>
-                                <td class="{{ 'profit' if '+' in row.profit_loss else 'loss' if '-' in row.profit_loss else '' }}">{{ row.profit_loss }}</td>
-                            </tr>
-                            {% else %}
-                            <tr><td colspan="8" class="empty-state">No trade history yet.</td></tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
             </section>
 
-            <section class="card panel-block">
-                <h2>Digit Stats</h2>
-                <div class="digit-grid" id="digit-grid">
-                    {% for item in state.digits %}
-                    <div class="digit-card">
-                        <div class="digit-tone tone-{{ item.tone }}">{{ item.digit }}</div>
-                        <div class="digit-percent">{{ item.percent }}%</div>
+            <section class="tab-panel" data-panel="event-log">
+                <div class="panel-block nav-panel-card">
+                    <div class="panel-head">
+                        <h2>Event Log</h2>
+                        <div class="muted">Bot activity feed</div>
                     </div>
-                    {% endfor %}
+                    <div class="log-box" id="log-box">
+                        {% for entry in state.logs %}
+                        <p>{{ entry }}</p>
+                        {% else %}
+                        <p>No logs yet.</p>
+                        {% endfor %}
+                    </div>
                 </div>
             </section>
-
-            <section class="card panel-block">
-                <h2>Bot Logs</h2>
-                <div class="log-box" id="log-box">
-                    {% for entry in state.logs %}
-                    <p>{{ entry }}</p>
-                    {% else %}
-                    <p>No logs yet.</p>
-                    {% endfor %}
-                </div>
-            </section>
-        </div>
+        </section>
     </section>
 </main>
 
@@ -367,6 +374,29 @@
         box.scrollTop = box.scrollHeight;
     }
 
+    function setupDashboardTabs() {
+        const navTabs = [...document.querySelectorAll(".nav-tab")];
+        const tabPanels = [...document.querySelectorAll(".tab-panel")];
+        const subTabs = [...document.querySelectorAll(".sub-tab")];
+        const subPanels = [...document.querySelectorAll(".sub-panel")];
+
+        navTabs.forEach((tab) => {
+            tab.addEventListener("click", () => {
+                const target = tab.dataset.tab;
+                navTabs.forEach((item) => item.classList.toggle("active", item === tab));
+                tabPanels.forEach((panel) => panel.classList.toggle("active", panel.dataset.panel === target));
+            });
+        });
+
+        subTabs.forEach((tab) => {
+            tab.addEventListener("click", () => {
+                const target = tab.dataset.subtab;
+                subTabs.forEach((item) => item.classList.toggle("active", item === tab));
+                subPanels.forEach((panel) => panel.classList.toggle("active", panel.dataset.subpanel === target));
+            });
+        });
+    }
+
     async function refreshDashboard() {
         try {
             const response = await fetch("{{ url_for('api_status') }}", { cache: "no-store" });
@@ -394,6 +424,7 @@
         }
     }
 
+    setupDashboardTabs();
     setInterval(refreshDashboard, 4000);
 </script>
 {% endblock %}

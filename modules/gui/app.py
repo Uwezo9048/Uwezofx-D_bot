@@ -30,7 +30,6 @@ class DerivUwezoApp:
         self.loop = None
         self.log_queue = queue.Queue()
         self.log_text = None
-        self.history_total_label = None
 
         self.logo_image = load_logo()
 
@@ -39,7 +38,6 @@ class DerivUwezoApp:
             "1HZ10V", "1HZ25V", "1HZ50V", "1HZ75V", "1HZ100V",
             "BOOM1000", "BOOM500", "CRASH1000", "CRASH500",
         ]
-        self.dashboard_cursor_color = "#FFD54A"
 
         self.timeframe_options = {
             "1s": 1, "2s": 2, "5s": 5, "10s": 10, "15s": 15, "30s": 30,
@@ -209,7 +207,7 @@ class DerivUwezoApp:
             try:
                 msg = self.log_queue.get_nowait()
                 if self.log_text and self.log_text.winfo_exists():
-                    self.log_text.config(state='disabled')
+                    self.log_text.config(state='normal')
                     self.log_text.insert('end', msg + "\n")
                     self.log_text.see('end')
                     self.log_text.config(state='normal')
@@ -239,7 +237,7 @@ class DerivUwezoApp:
             
             # If timestamp is a number (Unix timestamp)
             if isinstance(timestamp, (int, float)):
-                dt = datetime.utcfromtimestamp(timestamp)
+                dt = datetime.fromtimestamp(timestamp)
                 return dt.strftime('%d %b %Y %H:%M:%S GMT')
             
             return str(timestamp)
@@ -363,59 +361,77 @@ class DerivUwezoApp:
                 return
             for item in self.history_tree.get_children():
                 self.history_tree.delete(item)
-            self.history_tree.tag_configure('profit', foreground='#00D9A5', background='#0F1F1A')
-            self.history_tree.tag_configure('loss', foreground='#FF5E7D', background='#241218')
-            self.history_tree.tag_configure('neutral', foreground='#D8E1FF', background='#111A2E')
-
-            net_total = 0.0
+            
+            # Configure tags for profit/loss coloring
+            self.history_tree.tag_configure('profit', foreground='#00D9A5')  # Green for profit
+            self.history_tree.tag_configure('loss', foreground='#FF5E7D')    # Red for loss
+            self.history_tree.tag_configure('neutral', foreground='#E0E7FF') # White for neutral
+            
             for trade in trades:
+                # Determine contract type display
                 contract_type = trade.get('contract_type', trade.get('type', ''))
                 type_display = self._format_contract_type(contract_type)
+                
+                # Format ref ID - show first 6-8 chars or full ID if short
                 ref_id = str(trade.get('ref_id', trade.get('contract_id', '')))
-                currency = str(trade.get('currency', 'USD'))
-                buy_time = self._format_timestamp(trade.get('buy_time', trade.get('start_time', '')))
-                sell_time = self._format_timestamp(trade.get('sell_time', trade.get('end_time', '')))
-                stake_raw = trade.get('stake', trade.get('buy_price', 0))
-                contract_raw = trade.get('contract_value', trade.get('payout', trade.get('sell_price', 0)))
-                profit_raw = trade.get('profit_loss', '')
-
+                if len(ref_id) > 10:
+                    ref_id = ref_id[-8:]  # Show last 8 digits like Deriv
+                
+                # Get currency (default to USD)
+                currency = trade.get('currency', 'USD')
+                
+                # Format buy time
+                buy_time = trade.get('buy_time', trade.get('start_time', ''))
+                buy_time = self._format_timestamp(buy_time)
+                
+                # Format stake
+                stake = trade.get('stake', trade.get('buy_price', 0))
                 try:
-                    stake_num = float(stake_raw) if stake_raw not in ('', None) else 0.0
-                except (TypeError, ValueError):
-                    stake_num = 0.0
+                    stake_str = f"{float(stake):.2f}" if stake else "0.00"
+                except (ValueError, TypeError):
+                    stake_str = "0.00"
+                
+                # Format sell time
+                sell_time = trade.get('sell_time', trade.get('end_time', ''))
+                sell_time = self._format_timestamp(sell_time)
+                
+                # Format contract value (payout/sell price)
+                contract_value = trade.get('contract_value', trade.get('payout', trade.get('sell_price', 0)))
                 try:
-                    contract_num = float(contract_raw) if contract_raw not in ('', None) else 0.0
-                except (TypeError, ValueError):
-                    contract_num = 0.0
+                    contract_str = f"{float(contract_value):.2f}" if contract_value else "0.00"
+                except (ValueError, TypeError):
+                    contract_str = "0.00"
+                
+                # Get profit/loss
+                profit = trade.get('profit_loss', 0)
                 try:
-                    profit_num = float(profit_raw) if str(profit_raw).strip() not in ('', '-') else 0.0
-                except (TypeError, ValueError):
-                    profit_num = contract_num - stake_num
-                net_total += profit_num
-
+                    profit_val = float(profit) if profit else 0.0
+                    profit_str = f"{profit_val:.2f}"
+                except (ValueError, TypeError):
+                    profit_val = 0.0
+                    profit_str = "0.00"
+                
                 values = (
                     type_display,
                     ref_id,
                     currency,
                     buy_time,
-                    f"{stake_num:.2f}",
+                    stake_str,
                     sell_time,
-                    f"{contract_num:.2f}",
-                    f"{profit_num:+.2f}" if profit_num else "0.00",
+                    contract_str,
+                    profit_str
                 )
                 
                 item = self.history_tree.insert('', 'end', values=values)
-                if profit_num < 0:
-                    self.history_tree.item(item, tags=('loss',))
-                elif profit_num > 0:
+                
+                # Apply color based on profit/loss
+                if profit_val > 0:
                     self.history_tree.item(item, tags=('profit',))
+                elif profit_val < 0:
+                    self.history_tree.item(item, tags=('loss',))
                 else:
                     self.history_tree.item(item, tags=('neutral',))
-
-            if self.history_total_label and self.history_total_label.winfo_exists():
-                total_color = '#00D9A5' if net_total > 0 else '#FF5E7D' if net_total < 0 else '#D8E1FF'
-                self.history_total_label.config(text=f"Net Profit/Loss: {net_total:+.2f}", fg=total_color)
-
+                    
         self.root.after(0, _update)
 
     def refresh_trade_history(self):
@@ -476,7 +492,7 @@ class DerivUwezoApp:
         self.manual_btn2.pack(side='left', padx=5)
 
     def _execute_manual_trade(self, contract_type: str, barrier: str = None):
-        if not self.bot or not self.loop or not self.bot._is_ws_open():
+        if not self.bot or not self.bot.ws:
             messagebox.showerror("Error", "Bot is not running. Please run the bot first.")
             return
         try:
@@ -494,6 +510,8 @@ class DerivUwezoApp:
 
     def manual_rise(self): self._execute_manual_trade("CALL")
     def manual_fall(self): self._execute_manual_trade("PUT")
+    def manual_higher(self): self._execute_manual_trade("CALL")
+    def manual_lower(self): self._execute_manual_trade("PUT")
     def manual_touch(self): self._execute_manual_trade("ONETOUCH", "+0.005")
     def manual_no_touch(self): self._execute_manual_trade("NOTOUCH", "+0.005")
     def manual_even(self): self._execute_manual_trade("DIGITEVEN")
@@ -539,7 +557,6 @@ class DerivUwezoApp:
             return
 
         config = BotConfig(
-            app_id=app_id,
             symbol=symbol,
             granularity_seconds=granularity,
             base_stake=base_stake,
@@ -570,16 +587,7 @@ class DerivUwezoApp:
 
         def run_loop():
             asyncio.set_event_loop(self.loop)
-            try:
-                self.loop.run_until_complete(self.bot.run_bot())
-            finally:
-                pending = [task for task in asyncio.all_tasks(self.loop) if not task.done()]
-                for task in pending:
-                    task.cancel()
-                if pending:
-                    self.loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
-                self.loop.run_until_complete(self.loop.shutdown_asyncgens())
-                self.loop.close()
+            self.loop.run_until_complete(self.bot.run_bot())
 
         self.bot_thread = threading.Thread(target=run_loop, daemon=True)
         self.bot_thread.start()
@@ -592,14 +600,10 @@ class DerivUwezoApp:
         if self.bot and self.loop:
             future = asyncio.run_coroutine_threadsafe(self.bot.stop(), self.loop)
             try:
-                future.result(timeout=10)
+                future.result(timeout=5)
             except Exception as e:
                 self.log(f"Stop error: {e}")
-        if self.bot_thread and self.bot_thread.is_alive():
-            self.bot_thread.join(timeout=10)
         self.bot = None
-        self.bot_thread = None
-        self.loop = None
         if self.start_btn and self.start_btn.winfo_exists():
             self.start_btn.config(state='normal')
         if self.stop_btn and self.stop_btn.winfo_exists():
@@ -726,7 +730,7 @@ class DerivUwezoApp:
             tk.Label(f, text=text, fg=ModernUI.COLORS['text_secondary'], bg=ModernUI.COLORS['bg_card'],
                      font=('Segoe UI', 9), width=LABEL_WIDTH, anchor='w').pack(side='left', padx=(0,5))
             e = tk.Entry(f, textvariable=var, width=width, bg=ModernUI.COLORS['bg_sidebar'], fg='white', bd=0,
-                         font=('Segoe UI', 9), show=show, insertbackground=self.dashboard_cursor_color)
+                         font=('Segoe UI', 9), show=show)
             e.pack(side='left', fill='x', expand=True)
             ModernUI.add_glow_effect(e)
             row += 1
@@ -787,8 +791,7 @@ class DerivUwezoApp:
         self.duration_label.grid(row=row, column=0, sticky='w', padx=10, pady=2)
         self.duration_var = tk.StringVar(value="1")
         self.duration_entry = tk.Entry(settings_scroll, textvariable=self.duration_var, width=5,
-                                       bg=ModernUI.COLORS['bg_sidebar'], fg='white', bd=0, font=('Segoe UI', 9),
-                                       insertbackground=self.dashboard_cursor_color)
+                                       bg=ModernUI.COLORS['bg_sidebar'], fg='white', bd=0, font=('Segoe UI', 9))
         self.duration_entry.grid(row=row, column=0, sticky='e', padx=(LABEL_WIDTH*7+20, 5), pady=2)
         row += 1
 
@@ -797,8 +800,7 @@ class DerivUwezoApp:
         self.ticks_duration_label.grid(row=row, column=0, sticky='w', padx=10, pady=2)
         self.ticks_duration_var = tk.StringVar(value="5")
         self.ticks_duration_entry = tk.Entry(settings_scroll, textvariable=self.ticks_duration_var, width=5,
-                                             bg=ModernUI.COLORS['bg_sidebar'], fg='white', bd=0, font=('Segoe UI', 9),
-                                             insertbackground=self.dashboard_cursor_color)
+                                             bg=ModernUI.COLORS['bg_sidebar'], fg='white', bd=0, font=('Segoe UI', 9))
         self.ticks_duration_entry.grid(row=row, column=0, sticky='e', padx=(LABEL_WIDTH*7+20, 5), pady=2)
         self.ticks_duration_label.grid_remove()
         self.ticks_duration_entry.grid_remove()
@@ -858,7 +860,7 @@ class DerivUwezoApp:
                  bg=ModernUI.COLORS['bg_card'], font=('Segoe UI', 9), width=LABEL_WIDTH, anchor='w').pack(side='left', padx=(0,5))
         self.manual_contract_var = tk.StringVar(value="Rise/Fall")
         contract_combo = ttk.Combobox(contract_frame, textvariable=self.manual_contract_var,
-                                      values=["Rise/Fall", "Touch/No Touch", "Even/Odd", "Over/Under"],
+                                      values=["Rise/Fall", "Higher/Lower", "Touch/No Touch", "Even/Odd", "Over/Under"],
                                       width=20, font=('Segoe UI', 9), state='readonly')
         contract_combo.pack(side='left', fill='x', expand=True)
         contract_combo.bind('<<ComboboxSelected>>', self.on_manual_contract_change)
@@ -870,8 +872,7 @@ class DerivUwezoApp:
                  bg=ModernUI.COLORS['bg_card'], font=('Segoe UI', 9), width=LABEL_WIDTH, anchor='w').pack(side='left', padx=(0,5))
         self.manual_stake_var = tk.StringVar(value="1.0")
         tk.Entry(stake_frame, textvariable=self.manual_stake_var, width=10, bg=ModernUI.COLORS['bg_sidebar'],
-                 fg='white', bd=0, font=('Segoe UI', 9),
-                 insertbackground=self.dashboard_cursor_color).pack(side='left', fill='x', expand=True)
+                 fg='white', bd=0, font=('Segoe UI', 9)).pack(side='left', fill='x', expand=True)
         row += 1
 
         duration_frame = tk.Frame(settings_scroll, bg=ModernUI.COLORS['bg_card'])
@@ -881,8 +882,7 @@ class DerivUwezoApp:
         self.manual_duration_label.pack(side='left', padx=(0,5))
         self.manual_duration_var = tk.StringVar(value="1")
         tk.Entry(duration_frame, textvariable=self.manual_duration_var, width=5, bg=ModernUI.COLORS['bg_sidebar'],
-                 fg='white', bd=0, font=('Segoe UI', 9),
-                 insertbackground=self.dashboard_cursor_color).pack(side='left', fill='x', expand=True)
+                 fg='white', bd=0, font=('Segoe UI', 9)).pack(side='left', fill='x', expand=True)
         row += 1
 
         man_btn_frame = tk.Frame(settings_scroll, bg=ModernUI.COLORS['bg_card'])
@@ -945,48 +945,23 @@ class DerivUwezoApp:
         refresh_hist_btn = ModernUI.create_gradient_button(hist_btn_frame, "🔄 Refresh History", self.refresh_trade_history, 'info')
         refresh_hist_btn.pack(side='left', padx=5)
 
-        summary_frame = tk.Frame(hist_btn_frame, bg=ModernUI.COLORS['bg_card'])
-        summary_frame.pack(side='right', padx=8)
-        tk.Label(summary_frame, text="Contract Report", fg=ModernUI.COLORS['text_secondary'],
-                 bg=ModernUI.COLORS['bg_card'], font=('Segoe UI', 8, 'bold')).pack(anchor='e')
-        self.history_total_label = tk.Label(summary_frame, text="Net Profit/Loss: 0.00",
-                                            fg='#D8E1FF', bg=ModernUI.COLORS['bg_card'],
-                                            font=('Segoe UI', 11, 'bold'))
-        self.history_total_label.pack(anchor='e')
         hist_tree_frame = tk.Frame(hist_panel, bg=ModernUI.COLORS['bg_card'])
         hist_tree_frame.pack(fill='both', expand=True)
         
-        # Grouped Deriv contract-style report columns
+        # Column headers matching Deriv report
         hist_columns = ('Type', 'Ref. ID', 'Currency', 'Buy time', 'Stake', 'Sell time', 'Contract', 'Profit/Loss')
-        history_style = ttk.Style()
-        history_style.configure('History.Treeview',
-                                background='#111A2E',
-                                fieldbackground='#111A2E',
-                                foreground='#D8E1FF',
-                                rowheight=30,
-                                borderwidth=0,
-                                font=('Segoe UI', 9))
-        history_style.configure('History.Treeview.Heading',
-                                background='#31456F',
-                                foreground='#111A2E',
-                                relief='flat',
-                                borderwidth=0,
-                                font=('Segoe UI', 10, 'bold'),
-                                padding=(10, 8))
-        history_style.map('History.Treeview.Heading', background=[('active', '#263556')])
-        self.history_tree = ttk.Treeview(hist_tree_frame, columns=hist_columns, show='headings',
-                                         height=12, style='History.Treeview')
+        self.history_tree = ttk.Treeview(hist_tree_frame, columns=hist_columns, show='headings', height=12)
         
-        # Set column widths and alignments for grouped contract history
+        # Set column widths and alignments to match Deriv report style
         col_config = {
-            'Type': {'width': 90, 'anchor': 'center'},
-            'Ref. ID': {'width': 120, 'anchor': 'w'},
-            'Currency': {'width': 70, 'anchor': 'center'},
-            'Buy time': {'width': 170, 'anchor': 'w'},
-            'Stake': {'width': 90, 'anchor': 'e'},
-            'Sell time': {'width': 170, 'anchor': 'w'},
-            'Contract': {'width': 100, 'anchor': 'e'},
-            'Profit/Loss': {'width': 100, 'anchor': 'e'},
+            'Type': {'width': 70, 'anchor': 'center'},
+            'Ref. ID': {'width': 100, 'anchor': 'w'},
+            'Currency': {'width': 60, 'anchor': 'center'},
+            'Buy time': {'width': 150, 'anchor': 'w'},
+            'Stake': {'width': 70, 'anchor': 'e'},
+            'Sell time': {'width': 150, 'anchor': 'w'},
+            'Contract': {'width': 80, 'anchor': 'e'},
+            'Profit/Loss': {'width': 80, 'anchor': 'e'},
         }
         
         for col in hist_columns:
@@ -1030,13 +1005,11 @@ class DerivUwezoApp:
         notebook.add(log_tab, text="📋 Event Log")
         log_frame = tk.Frame(log_tab, bg=ModernUI.COLORS['bg_card'])
         log_frame.pack(fill='both', expand=True, padx=5, pady=5)
-        self.log_text = tk.Text(log_frame, bg='#0E1628', fg='#E0E7FF',
-                                insertbackground=self.dashboard_cursor_color, font=('Consolas', 8), wrap='word')
+        self.log_text = tk.Text(log_frame, bg='#0E1628', fg='#E0E7FF', insertbackground='white', font=('Consolas', 8), wrap='word')
         scroll_log = tk.Scrollbar(log_frame, command=self.log_text.yview)
         self.log_text.configure(yscrollcommand=scroll_log.set)
         scroll_log.pack(side='right', fill='y')
         self.log_text.pack(side='left', fill='both', expand=True)
-        self.log_text.config(state='disabled')
 
         app_id = self.app_id_var.get()
         threading.Thread(target=self.load_symbols_thread, args=(app_id,), daemon=True).start()
