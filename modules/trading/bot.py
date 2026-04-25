@@ -80,7 +80,14 @@ class DerivBot:
         self.open_positions = []
 
     def _is_ws_open(self) -> bool:
-        return self.ws is not None and not getattr(self.ws, "closed", True)
+        if self.ws is None:
+            return False
+        closed_attr = getattr(self.ws, "closed", None)
+        if isinstance(closed_attr, bool):
+            return not closed_attr
+        # Some websockets versions don't expose `.closed` as a bool.
+        # In that case, treat the connection as open and let send/recv raise if it is not.
+        return True
 
     def _fail_pending(self, exc: Exception):
         for fut in list(self.pending.values()):
