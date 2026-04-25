@@ -76,6 +76,7 @@ class DerivBot:
 
         self.auto_trade = False
         self.adaptive_mode = False
+        self.latest_confidence = 0
 
         self.open_positions = []
 
@@ -111,7 +112,7 @@ class DerivBot:
             return default
 
     def _extract_trade_amounts(self, txn: Dict[str, Any]) -> tuple[float, float, float]:
-        buy_price = self._safe_float(
+        buy_price = abs(self._safe_float(
             txn.get(
                 'buy_price',
                 txn.get(
@@ -122,11 +123,11 @@ class DerivBot:
                     )
                 )
             )
-        )
-        sell_price = self._safe_float(
+        ))
+        sell_price = max(0.0, self._safe_float(
             txn.get('sell_price', txn.get('sell', txn.get('sell_amount', 0)))
-        )
-        payout = self._safe_float(txn.get('payout', txn.get('payout_price', sell_price)))
+        ))
+        payout = max(0.0, self._safe_float(txn.get('payout', txn.get('payout_price', sell_price))))
         return buy_price, sell_price, payout
 
     def _resolve_history_profit_loss(self, txn: Dict[str, Any]) -> float:
@@ -246,7 +247,7 @@ class DerivBot:
 
             action = str(txn.get('action_type', txn.get('action', txn.get('transaction_type', '')))).lower()
             amount = self._safe_float(txn.get('amount', txn.get('amount_for_display', 0)))
-            payout = self._safe_float(txn.get('payout', txn.get('payout_price', 0)))
+            buy_price_raw, sell_price_raw, payout = self._extract_trade_amounts(txn)
             transaction_time = int(self._safe_float(
                 txn.get('transaction_time', txn.get('time', txn.get('date_start', 0))),
                 0
@@ -256,13 +257,21 @@ class DerivBot:
             is_sell = any(word in action for word in ('sell', 'payout', 'settlement', 'expire'))
 
             if is_buy:
-                entry['buy_price'] = abs(amount) if amount else entry['buy_price']
+                if buy_price_raw > 0:
+                    entry['buy_price'] = buy_price_raw
+                elif amount != 0:
+                    entry['buy_price'] = abs(amount)
                 entry['has_buy'] = True
                 if transaction_time:
                     entry['start_ts'] = transaction_time
 
             if is_sell:
-                entry['sell_price'] = abs(amount) if amount else (payout or entry['sell_price'])
+                if sell_price_raw > 0:
+                    entry['sell_price'] = sell_price_raw
+                elif payout > 0:
+                    entry['sell_price'] = payout
+                elif amount > 0:
+                    entry['sell_price'] = amount
                 entry['has_sell'] = True
                 if transaction_time:
                     entry['end_ts'] = transaction_time
@@ -303,6 +312,26 @@ class DerivBot:
 
         trades.sort(key=lambda trade: trade.get('_sort_ts', 0), reverse=True)
         return trades[:limit]
+
+    def _digit_win_rate(self, signal: str) -> float:
+        stats = self.digit_analyzer.digits
+        if signal == TradeSignal.OVER:
+            win_digits = [4, 5, 6, 7, 8, 9]
+        elif signal == TradeSignal.UNDER:
+            win_digits = [0, 1, 2, 3, 4, 5]
+        elif signal == TradeSignal.EVEN:
+            win_digits = [0, 2, 4, 6, 8]
+        elif signal == TradeSignal.ODD:
+            win_digits = [1, 3, 5, 7, 9]
+        else:
+            return 0.0
+        return sum(stats[d].percentage for d in win_digits)
+
+    def _minimum_trade_confidence(self) -> float:
+        try:
+            return float(getattr(self.config, "min_digit_confidence", 62))
+        except (TypeError, ValueError):
+            return 62.0
 
     def _choose_tick_duration(self, signal: str) -> int:
         if not self.config.auto_ticks:
@@ -620,8 +649,19 @@ class DerivBot:
                                 if self.auto_trade:
                                     now = time.time()
                                     if now - self.last_trade_time >= self.config.cooldown:
-                                        await self.signal_queue.put(trade_signal)
-                                        self.log_message(f"✅ Signal queued for trading: {trade_signal}")
+                                        win_rate = self._digit_win_rate(trade_signal)
+                                        min_confidence = self._minimum_trade_confidence()
+                                        if win_rate >= min_confidence:
+                                            await self.signal_queue.put(trade_signal)
+                                            self.log_message(
+                                                f"✅ Signal queued for trading: {trade_signal} "
+                                                f"(win-rate {win_rate:.1f}% >= {min_confidence:.1f}%)"
+                                            )
+                                        else:
+                                            self.log_message(
+                                                f"⚠️ Signal skipped: {trade_signal} win-rate {win_rate:.1f}% "
+                                                f"below minimum {min_confidence:.1f}%"
+                                            )
                                     else:
                                         self.log_message(f"Signal suppressed by cooldown", "DEBUG")
 
@@ -662,6 +702,7 @@ class DerivBot:
 
                         signal = self.indicator.get_signal_detail().direction
                         confidence = self._calculate_confidence(signal) if signal != TradeSignal.NEUTRAL else 0
+                        self.latest_confidence = confidence
                         self.update_confidence_display(confidence)
                         if self.signal_callback:
                             self.signal_callback(signal)
@@ -692,8 +733,18 @@ class DerivBot:
                             if self.current_confirmed_signal != TradeSignal.NEUTRAL and self.current_confirmed_signal == signal:
                                 now = time.time()
                                 if now - self.last_trade_time >= self.config.cooldown:
-                                    await self.signal_queue.put(self.current_confirmed_signal)
-                                    self.log_message(f"✅ Signal queued for trading: {self.current_confirmed_signal}")
+                                    min_confidence = self._minimum_trade_confidence()
+                                    if self.latest_confidence >= min_confidence:
+                                        await self.signal_queue.put(self.current_confirmed_signal)
+                                        self.log_message(
+                                            f"✅ Signal queued for trading: {self.current_confirmed_signal} "
+                                            f"(confidence {self.latest_confidence:.0f}% >= {min_confidence:.0f}%)"
+                                        )
+                                    else:
+                                        self.log_message(
+                                            f"⚠️ Confirmed signal skipped: confidence {self.latest_confidence:.0f}% "
+                                            f"below minimum {min_confidence:.0f}%"
+                                        )
                                 else:
                                     self.log_message(f"Confirmed signal suppressed by cooldown", "DEBUG")
 

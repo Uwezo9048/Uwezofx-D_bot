@@ -206,7 +206,12 @@ class WebBotManager:
     def _update_history(self, trades):
         normalized = []
         for trade in trades:
-            profit_loss = trade.get("profit_loss", "0.00")
+            raw_profit_loss = trade.get("profit_loss", "0.00")
+            try:
+                profit_value = float(raw_profit_loss)
+                profit_loss = f"{profit_value:+.2f}" if profit_value else "0.00"
+            except (TypeError, ValueError):
+                profit_loss = str(raw_profit_loss)
             normalized.append(
                 {
                     "type": str(trade.get("contract_type", trade.get("type", ""))),
@@ -216,7 +221,7 @@ class WebBotManager:
                     "stake": f"{float(trade.get('stake', trade.get('buy_price', 0)) or 0):.2f}",
                     "sell_time": str(trade.get("sell_time", trade.get("end_time", ""))),
                     "contract": f"{float(trade.get('contract_value', trade.get('payout', trade.get('sell_price', 0)) or 0)):.2f}",
-                    "profit_loss": str(profit_loss),
+                    "profit_loss": profit_loss,
                 }
             )
         with self.lock:
