@@ -1050,8 +1050,6 @@ class DerivBot:
                 ping_timeout=None,
                 close_timeout=10,
                 max_size=2**23,
-                read_limit=2**16,
-                write_limit=2**16,
                 open_timeout=30
             )
             self.log_message("WebSocket connected")
@@ -1126,8 +1124,6 @@ class DerivBot:
                     ping_timeout=None,
                     close_timeout=10,
                     max_size=2**23,
-                    read_limit=2**16,
-                    write_limit=2**16,
                     open_timeout=30
                 )
                 self.log_message(f"WebSocket connected ({url})")
