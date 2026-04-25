@@ -20,7 +20,7 @@
 
 body {
     margin: 0;
-    min-height: 100vh;
+    min-height: 100dvh;
     color: var(--text-primary);
     background:
         radial-gradient(circle at top right, rgba(108, 99, 255, 0.18), transparent 28%),
@@ -38,6 +38,9 @@ a {
     width: min(1560px, calc(100% - 20px));
     margin: 0 auto;
     padding: 10px 0 18px;
+    min-height: 100dvh;
+    display: flex;
+    flex-direction: column;
 }
 
 .card {
@@ -231,6 +234,15 @@ select:focus {
     grid-template-columns: minmax(340px, 500px) minmax(0, 1fr);
     gap: 12px;
     align-items: stretch;
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+.sidebar-stack {
+    display: grid;
+    gap: 12px;
+    align-content: start;
+    min-height: 0;
 }
 
 .sidebar,
@@ -241,9 +253,13 @@ select:focus {
 
 .sidebar {
     align-self: stretch;
-    min-height: calc(100vh - 92px);
-    max-height: calc(100vh - 92px);
+    min-height: calc(100dvh - 104px);
+    max-height: calc(100dvh - 104px);
     overflow-y: auto;
+}
+
+.manual-card {
+    padding: 14px;
 }
 
 .section-title {
@@ -316,6 +332,7 @@ select:focus {
 .main-panel {
     display: grid;
     gap: 10px;
+    min-height: 0;
 }
 
 .status-strip {
@@ -422,7 +439,10 @@ select:focus {
 .history-table-wrap {
     flex: 1 1 auto;
     min-height: 520px;
-    overflow: auto;
+    max-height: 520px;
+    overflow-y: auto;
+    overflow-x: auto;
+    scrollbar-gutter: stable;
     border: 1px solid rgba(46, 63, 102, 0.65);
     border-radius: 10px;
 }

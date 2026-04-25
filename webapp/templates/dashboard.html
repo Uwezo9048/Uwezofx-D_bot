@@ -13,8 +13,9 @@
 </header>
 
 <main class="dashboard-shell">
-    <aside class="card sidebar">
-        <div class="section-title">Trading Settings</div>
+    <aside class="sidebar-stack">
+        <section class="card sidebar">
+        <div class="section-title">Bot Settings</div>
         <form method="post" action="{{ url_for('start_bot') }}">
             <div class="settings-grid">
                 <label class="field-row field-row-wide">
@@ -23,7 +24,7 @@
                 </label>
                 <label class="field-row">
                     <span>App ID</span>
-                    <input type="text" name="app_id" value="{{ state.config.app_id }}">
+                    <input type="text" name="app_id" value="{{ state.config.app_id }}" readonly>
                 </label>
                 <label class="field-row">
                     <span>Symbol</span>
@@ -107,10 +108,10 @@
                 <button class="btn btn-warning" type="submit" formaction="{{ url_for('reset_martingale') }}">Reset Martingale</button>
             </div>
         </form>
+        </section>
 
-        <div class="section-divider"></div>
-
-        <div class="section-title section-title-small">Manual Trade</div>
+        <section class="card manual-card">
+        <div class="section-title section-title-small">Manual Trading</div>
         <form method="post" action="{{ url_for('manual_trade') }}">
             <div class="settings-grid">
                 <label class="field-row field-row-wide">
@@ -137,6 +138,7 @@
                 <button class="btn btn-info" type="submit" formaction="{{ url_for('refresh_bot_data') }}">Refresh Data</button>
             </div>
         </form>
+        </section>
     </aside>
 
     <section class="main-panel">
@@ -397,10 +399,33 @@
         });
     }
 
+    function setupIdleLogout() {
+        const idleMs = 5 * 60 * 1000; // 5 minutes
+        let timer = null;
+
+        const resetTimer = () => {
+            if (timer) {
+                clearTimeout(timer);
+            }
+            timer = setTimeout(() => {
+                window.location.href = "{{ url_for('logout') }}";
+            }, idleMs);
+        };
+
+        ["mousemove", "mousedown", "keydown", "scroll", "touchstart", "click"].forEach((eventName) => {
+            window.addEventListener(eventName, resetTimer, { passive: true });
+        });
+
+        resetTimer();
+    }
+
     async function refreshDashboard() {
         try {
             const response = await fetch("{{ url_for('api_status') }}", { cache: "no-store" });
             if (!response.ok) {
+                if (response.status === 401) {
+                    window.location.href = "{{ url_for('login') }}";
+                }
                 return;
             }
 
@@ -425,6 +450,7 @@
     }
 
     setupDashboardTabs();
+    setupIdleLogout();
     setInterval(refreshDashboard, 4000);
 </script>
 {% endblock %}

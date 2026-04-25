@@ -2,6 +2,7 @@ import asyncio
 import contextlib
 import json
 import math
+import os
 import time
 import platform
 import sys
@@ -1101,10 +1102,100 @@ class DerivBot:
             self.log_message(f"Connection error: {e}", "ERROR")
             return False
 
+    async def _connect_and_setup_render(self) -> bool:
+        configured_url = (os.getenv("DERIV_WS_URL") or "").strip()
+        endpoints = []
+        if configured_url:
+            endpoints.append(configured_url)
+        endpoints.append(f"wss://ws.derivws.com/websockets/v3?app_id={self.app_id}")
+        endpoints.append(f"wss://ws.binaryws.com/websockets/v3?app_id={self.app_id}")
+
+        unique_endpoints = []
+        seen = set()
+        for endpoint in endpoints:
+            if endpoint and endpoint not in seen:
+                unique_endpoints.append(endpoint)
+                seen.add(endpoint)
+
+        last_error = None
+        for url in unique_endpoints:
+            try:
+                self.ws = await websockets.connect(
+                    url,
+                    ping_interval=None,
+                    ping_timeout=None,
+                    close_timeout=10,
+                    max_size=2**23,
+                    read_limit=2**16,
+                    write_limit=2**16,
+                    open_timeout=30
+                )
+                self.log_message(f"WebSocket connected ({url})")
+                self._message_loop_task = asyncio.create_task(self._message_loop())
+                self._ping_task = asyncio.create_task(self._send_pings())
+
+                auth = await self._send({"authorize": self.token})
+                if 'error' in auth:
+                    self.log_message(f"Auth failed: {auth['error']['message']}", "ERROR")
+                    return False
+                self.log_message(f"Authorized as {auth['authorize']['loginid']}")
+
+                bal = await self._send({"balance": 1, "subscribe": 1})
+                if 'balance' in bal:
+                    self.balance = float(bal['balance']['balance'])
+                    self.account_currency = bal['balance']['currency']
+                    if self.update_balance:
+                        self.update_balance(self.balance, self.account_currency)
+
+                await self._send({"portfolio": 1, "subscribe": 1})
+
+                if self.config.selected_strategy in ["Over 1-3", "Under 6-8", "Even", "Odd"]:
+                    tick_sub = await self._send({"ticks": self.config.symbol, "subscribe": 1})
+                    if 'error' in tick_sub:
+                        self.log_message(f"Tick subscription failed: {tick_sub['error']['message']}", "ERROR")
+                        return False
+                    self.log_message(f"Subscribed to {self.config.symbol} ticks")
+                else:
+                    granularity = self.config.granularity_seconds
+                    sub = await self._send({
+                        "ticks_history": self.config.symbol,
+                        "granularity": granularity,
+                        "style": "candles",
+                        "subscribe": 1,
+                        "count": 100,
+                        "end": "latest"
+                    })
+                    if 'error' in sub:
+                        self.log_message(f"Candle subscription failed: {sub['error']['message']}", "ERROR")
+                        return False
+                    self.log_message(f"Subscribed to {self.config.symbol} {granularity}s candles")
+
+                self._reconnect_attempts = 0
+                return True
+            except Exception as e:
+                last_error = e
+                self.log_message(f"Connection attempt failed ({url}): {e}", "WARN")
+                if self.ws:
+                    with contextlib.suppress(Exception):
+                        if self._is_ws_open():
+                            await self.ws.close()
+                    with contextlib.suppress(Exception):
+                        await self.ws.wait_closed()
+                    self.ws = None
+                if self._message_loop_task:
+                    self._message_loop_task.cancel()
+                    self._message_loop_task = None
+                if self._ping_task:
+                    self._ping_task.cancel()
+                    self._ping_task = None
+
+        self.log_message(f"Connection error: {last_error}", "ERROR")
+        return False
+
     async def run_bot(self):
         self.running = True
         while self.running:
-            connected = await self._connect_and_setup()
+            connected = await self._connect_and_setup_render()
             if not connected:
                 self._reconnect_attempts += 1
                 wait = min(60, 5 * self._reconnect_attempts)

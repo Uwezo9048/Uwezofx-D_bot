@@ -16,7 +16,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from config import BotConfig
+from config import BotConfig, Settings
 from modules.database.supabase_manager import SupabaseUserManager
 from modules.trading.bot import DerivBot
 
@@ -82,7 +82,6 @@ def login_required(view_func):
 class WebBotManager:
     def __init__(self):
         self.lock = threading.RLock()
-        self.user_manager = SupabaseUserManager()
         self.bot = None
         self.loop = None
         self.bot_thread = None
@@ -94,7 +93,7 @@ class WebBotManager:
             "connected": False,
             "user": None,
             "config": {
-                "app_id": 133059,
+                "app_id": Settings.DERIV_APP_ID,
                 "symbol": "R_100",
                 "strategy": "ICT/SMS",
                 "stake": "1.0",
@@ -260,7 +259,11 @@ class WebBotManager:
 
     def update_config_from_form(self, form):
         with self.lock:
+            # Keep app_id shared across users/services from environment settings.
+            self.state["config"]["app_id"] = str(Settings.DERIV_APP_ID)
             for field in self.state["config"]:
+                if field == "app_id":
+                    continue
                 value = form.get(field)
                 if value is not None:
                     self.state["config"][field] = value.strip()
@@ -450,7 +453,42 @@ class WebBotManager:
         return False, result
 
 
-bot_manager = WebBotManager()
+class UserBotHub:
+    def __init__(self):
+        self.lock = threading.RLock()
+        self.managers = {}
+
+    def _user_key(self, user):
+        user_id = user.get("id")
+        if user_id is not None:
+            return str(user_id)
+        return str(user.get("username", "anonymous"))
+
+    def get_manager(self, user):
+        key = self._user_key(user)
+        with self.lock:
+            manager = self.managers.get(key)
+            if manager is None:
+                manager = WebBotManager()
+                self.managers[key] = manager
+            manager.set_user(user)
+            return manager
+
+    def pop_manager(self, user):
+        key = self._user_key(user)
+        with self.lock:
+            return self.managers.pop(key, None)
+
+
+user_manager = SupabaseUserManager()
+bot_hub = UserBotHub()
+
+
+def current_manager():
+    user = session.get("user")
+    if not user:
+        return None
+    return bot_hub.get_manager(user)
 
 
 def fetch_active_symbols(app_id):
@@ -476,7 +514,8 @@ def fetch_active_symbols(app_id):
 
 
 def render_dashboard_page():
-    snapshot = bot_manager.snapshot()
+    manager = current_manager()
+    snapshot = manager.snapshot() if manager else WebBotManager().snapshot()
     symbols = fetch_active_symbols(snapshot["config"]["app_id"])
     user = session.get("user", {})
     return render_template(
@@ -501,13 +540,13 @@ def login():
             flash("Username and login code required", "error")
             return render_template("login.html")
 
-        success, message, user = bot_manager.user_manager.login(username, login_code)
+        success, message, user = user_manager.login(username, login_code)
         if not success:
             flash(message, "error")
             return render_template("login.html")
 
         session["user"] = user
-        bot_manager.set_user(user)
+        bot_hub.get_manager(user)
         flash("Login successful.", "success")
         return redirect(url_for("dashboard"))
 
@@ -516,7 +555,12 @@ def login():
 
 @app.route("/logout")
 def logout():
-    bot_manager.stop_bot()
+    manager = current_manager()
+    if manager:
+        manager.stop_bot()
+    user = session.get("user")
+    if user:
+        bot_hub.pop_manager(user)
     session.clear()
     flash("Logged out.", "success")
     return redirect(url_for("login"))
@@ -525,7 +569,7 @@ def logout():
 @app.route("/register", methods=["GET", "POST"])
 def register():
     if request.method == "POST":
-        success, message = bot_manager.user_manager.register_user(
+        success, message = user_manager.register_user(
             request.form.get("username", "").strip(),
             request.form.get("email", "").strip(),
             request.form.get("phone", "").strip(),
@@ -540,7 +584,7 @@ def register():
 @app.route("/reset-password", methods=["GET", "POST"])
 def reset_password():
     if request.method == "POST":
-        success, message = bot_manager.user_manager.request_password_reset(
+        success, message = user_manager.request_password_reset(
             request.form.get("email", "").strip()
         )
         flash(message, "success" if success else "error")
@@ -563,13 +607,18 @@ def healthz():
 @app.route("/bot/start", methods=["POST"])
 @login_required
 def start_bot():
+    manager = current_manager()
+    if not manager:
+        flash("Please log in first.", "error")
+        return redirect(url_for("login"))
+
     token = request.form.get("token", "").strip()
     if not token:
         flash("API token is required.", "error")
         return redirect(url_for("dashboard"))
 
-    bot_manager.update_config_from_form(request.form)
-    success, message = bot_manager.start_bot(token)
+    manager.update_config_from_form(request.form)
+    success, message = manager.start_bot(token)
     flash(message, "success" if success else "error")
     return redirect(url_for("dashboard"))
 
@@ -577,7 +626,11 @@ def start_bot():
 @app.route("/bot/stop", methods=["POST"])
 @login_required
 def stop_bot():
-    success, message = bot_manager.stop_bot()
+    manager = current_manager()
+    if not manager:
+        flash("Please log in first.", "error")
+        return redirect(url_for("login"))
+    success, message = manager.stop_bot()
     flash(message, "success" if success else "error")
     return redirect(url_for("dashboard"))
 
@@ -585,7 +638,11 @@ def stop_bot():
 @app.route("/bot/reset-martingale", methods=["POST"])
 @login_required
 def reset_martingale():
-    success, message = bot_manager.reset_martingale()
+    manager = current_manager()
+    if not manager:
+        flash("Please log in first.", "error")
+        return redirect(url_for("login"))
+    success, message = manager.reset_martingale()
     flash(message, "success" if success else "error")
     return redirect(url_for("dashboard"))
 
@@ -593,8 +650,12 @@ def reset_martingale():
 @app.route("/bot/mode", methods=["POST"])
 @login_required
 def set_mode():
+    manager = current_manager()
+    if not manager:
+        flash("Please log in first.", "error")
+        return redirect(url_for("login"))
     mode = request.form.get("mode", "Monitor")
-    success, message = bot_manager.set_mode(mode)
+    success, message = manager.set_mode(mode)
     flash(message, "success" if success else "error")
     return redirect(url_for("dashboard"))
 
@@ -602,8 +663,12 @@ def set_mode():
 @app.route("/bot/manual-trade", methods=["POST"])
 @login_required
 def manual_trade():
+    manager = current_manager()
+    if not manager:
+        flash("Please log in first.", "error")
+        return redirect(url_for("login"))
     try:
-        success, message = bot_manager.manual_trade(request.form)
+        success, message = manager.manual_trade(request.form)
     except Exception as exc:
         success, message = False, f"Invalid manual trade settings: {exc}"
     flash(message, "success" if success else "error")
@@ -613,8 +678,12 @@ def manual_trade():
 @app.route("/bot/close-position", methods=["POST"])
 @login_required
 def close_position():
+    manager = current_manager()
+    if not manager:
+        flash("Please log in first.", "error")
+        return redirect(url_for("login"))
     contract_id = request.form.get("contract_id", "").strip()
-    success, message = bot_manager.close_position(contract_id)
+    success, message = manager.close_position(contract_id)
     flash(message, "success" if success else "error")
     return redirect(url_for("dashboard"))
 
@@ -622,7 +691,11 @@ def close_position():
 @app.route("/bot/refresh", methods=["POST"])
 @login_required
 def refresh_bot_data():
-    success, message = bot_manager.refresh_data()
+    manager = current_manager()
+    if not manager:
+        flash("Please log in first.", "error")
+        return redirect(url_for("login"))
+    success, message = manager.refresh_data()
     flash(message, "success" if success else "error")
     return redirect(url_for("dashboard"))
 
@@ -630,7 +703,10 @@ def refresh_bot_data():
 @app.route("/api/status")
 @login_required
 def api_status():
-    return jsonify(bot_manager.snapshot())
+    manager = current_manager()
+    if not manager:
+        return jsonify({"error": "not_authenticated"}), 401
+    return jsonify(manager.snapshot())
 
 
 if __name__ == "__main__":
