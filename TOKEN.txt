@@ -5,3 +5,9 @@ up32xxt9Z38oEO0
 eTwt0mcPs5C2hky
 
 SLZOTRGQ
+
+
+corrections()
+Progressively maximum confidence when i securer a loss, 
+ie first confidence is 65% after securing my 1st loss confidence moves to 75%, after securing another loss it moves to 80%,
+then it maintains 80 until the martingale is reset
