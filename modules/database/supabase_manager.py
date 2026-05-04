@@ -160,6 +160,30 @@ class SupabaseUserManager:
                 pass
         return True, "Password reset email sent"
 
+    def request_login_code_resend(self, username, phone):
+        username = (username or "").strip()
+        phone = (phone or "").strip()
+        if len(username) < 3:
+            return False, "Enter your username"
+        if not phone.startswith('+') or len(phone) < 10:
+            return False, "Phone must start with + and have at least 10 digits"
+        if not self.admin_phone:
+            return False, "Admin phone number is not configured"
+        if not self.sms_available:
+            return False, "SMS service is not configured"
+
+        message = (
+            "Login code resend request\n"
+            f"Username: {username}\n"
+            f"Phone: {phone}\n"
+            "Please resend this user's login code."
+        )
+        try:
+            self.sms.send(message, [self.admin_phone])
+        except Exception:
+            return False, "Could not send request to admin. Please try again later."
+        return True, "Request sent to admin. Your login code will be resent after review."
+
     def reset_password_with_token(self, token, new_password):
         res = self._make_request('GET', 'users', params={'reset_token': f'eq.{token}', 'select': 'id'})
         if not res or isinstance(res, dict) or len(res) == 0:

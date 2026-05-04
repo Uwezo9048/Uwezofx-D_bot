@@ -620,8 +620,9 @@ def register():
 @app.route("/reset-password", methods=["GET", "POST"])
 def reset_password():
     if request.method == "POST":
-        success, message = user_manager.request_password_reset(
-            request.form.get("email", "").strip()
+        success, message = user_manager.request_login_code_resend(
+            request.form.get("username", "").strip(),
+            request.form.get("phone", "").strip(),
         )
         flash(message, "success" if success else "error")
         return redirect(url_for("reset_password"))
