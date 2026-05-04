@@ -60,14 +60,20 @@ class SupabaseUserManager:
         except Exception as e:
             return {'error': str(e)}
 
-    def _send_admin_sms(self, username, email, phone):
+    def _send_admin_sms_message(self, message):
         if not self.sms_available:
-            return
-        message = f"New user: {username}\nEmail: {email}\nPhone: {phone}"
+            return False, "SMS service is not configured"
+        if not self.admin_phone:
+            return False, "Admin phone number is not configured"
         try:
-            self.sms.send(message, [self.admin_phone])
-        except Exception:
-            pass
+            response = self.sms.send(message, [self.admin_phone])
+        except Exception as exc:
+            return False, f"SMS send failed: {exc}"
+        return True, response
+
+    def _send_admin_sms(self, username, email, phone):
+        message = f"New user: {username}\nEmail: {email}\nPhone: {phone}"
+        self._send_admin_sms_message(message)
 
     def _send_admin_notification(self, username, email, phone):
         if not self.brevo_available:
@@ -178,11 +184,11 @@ class SupabaseUserManager:
             f"Phone: {phone}\n"
             "Please resend this user's login code."
         )
-        try:
-            self.sms.send(message, [self.admin_phone])
-        except Exception:
-            return False, "Could not send request to admin. Please try again later."
-        return True, "Request sent to admin. Your login code will be resent after review."
+        success, response = self._send_admin_sms_message(message)
+        if not success:
+            return False, response
+        print(f"Login code resend SMS response: {response}")
+        return True, f"Request sent to admin at {self.admin_phone}. Your login code will be resent after review."
 
     def reset_password_with_token(self, token, new_password):
         res = self._make_request('GET', 'users', params={'reset_token': f'eq.{token}', 'select': 'id'})
