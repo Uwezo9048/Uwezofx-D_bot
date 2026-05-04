@@ -391,7 +391,7 @@
             tokenStatus.textContent = "Token saved until logout or timeout.";
         }
         const timeoutInput = document.getElementById("timeout-minutes-input");
-        if (timeoutInput && data.config?.timeout_minutes) {
+        if (timeoutInput && data.config?.timeout_minutes && document.activeElement !== timeoutInput) {
             timeoutInput.value = data.config.timeout_minutes;
         }
 
