@@ -147,6 +147,30 @@ select:focus {
     box-shadow: 0 0 0 3px rgba(108, 99, 255, 0.18);
 }
 
+.password-field {
+    position: relative;
+}
+
+.password-field input {
+    padding-right: 72px;
+}
+
+.password-toggle {
+    position: absolute;
+    top: 50%;
+    right: 8px;
+    transform: translateY(-50%);
+    min-width: 52px;
+    min-height: 28px;
+    border: 0;
+    border-radius: 6px;
+    background: var(--border);
+    color: var(--text-primary);
+    cursor: pointer;
+    font-size: 0.76rem;
+    font-weight: 700;
+}
+
 .button-row {
     display: flex;
     flex-wrap: wrap;

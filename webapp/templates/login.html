@@ -18,7 +18,10 @@
 
             <label>
                 <span>Login Code</span>
-                <input type="password" name="login_code" placeholder="Enter login code">
+                <div class="password-field">
+                    <input id="login-code-input" type="password" name="login_code" placeholder="Enter login code">
+                    <button id="toggle-login-code" class="password-toggle" type="button" aria-label="Show login code">Show</button>
+                </div>
             </label>
 
             <div class="button-row">
@@ -29,4 +32,15 @@
         </form>
     </section>
 </main>
+<script>
+    const loginCodeInput = document.getElementById("login-code-input");
+    const toggleLoginCode = document.getElementById("toggle-login-code");
+
+    toggleLoginCode?.addEventListener("click", () => {
+        const isHidden = loginCodeInput.type === "password";
+        loginCodeInput.type = isHidden ? "text" : "password";
+        toggleLoginCode.textContent = isHidden ? "Hide" : "Show";
+        toggleLoginCode.setAttribute("aria-label", isHidden ? "Hide login code" : "Show login code");
+    });
+</script>
 {% endblock %}

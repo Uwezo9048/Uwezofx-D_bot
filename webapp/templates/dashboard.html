@@ -306,6 +306,10 @@
 </main>
 
 <script>
+    let dashboardAudioContext = null;
+    let knownPositionIds = new Set({{ state.positions | map(attribute='id') | list | tojson }});
+    let tradeBeepReady = false;
+
     function escapeHtml(value) {
         return String(value ?? "")
             .replaceAll("&", "&amp;")
@@ -313,6 +317,42 @@
             .replaceAll(">", "&gt;")
             .replaceAll('"', "&quot;")
             .replaceAll("'", "&#39;");
+    }
+
+    function unlockTradeBeep() {
+        if (tradeBeepReady) {
+            return;
+        }
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContextClass) {
+            return;
+        }
+        dashboardAudioContext = dashboardAudioContext || new AudioContextClass();
+        if (dashboardAudioContext.state === "suspended") {
+            dashboardAudioContext.resume().catch(() => {});
+        }
+        tradeBeepReady = true;
+    }
+
+    function playTradeBeep() {
+        unlockTradeBeep();
+        if (!dashboardAudioContext) {
+            return;
+        }
+
+        const startedAt = dashboardAudioContext.currentTime;
+        const oscillator = dashboardAudioContext.createOscillator();
+        const gain = dashboardAudioContext.createGain();
+        oscillator.type = "sine";
+        oscillator.frequency.setValueAtTime(880, startedAt);
+        oscillator.frequency.setValueAtTime(1175, startedAt + 0.09);
+        gain.gain.setValueAtTime(0.0001, startedAt);
+        gain.gain.exponentialRampToValueAtTime(0.22, startedAt + 0.015);
+        gain.gain.exponentialRampToValueAtTime(0.0001, startedAt + 0.26);
+        oscillator.connect(gain);
+        gain.connect(dashboardAudioContext.destination);
+        oscillator.start(startedAt);
+        oscillator.stop(startedAt + 0.28);
     }
 
     function renderPositions(rows) {
@@ -379,6 +419,9 @@
     }
 
     function applyDashboardData(data) {
+        const incomingPositionIds = new Set((data.positions || []).map((row) => String(row.id)).filter(Boolean));
+        const hasNewPosition = [...incomingPositionIds].some((id) => !knownPositionIds.has(id));
+
         document.getElementById("metric-balance").textContent = data.metrics.balance;
         document.getElementById("metric-stake").textContent = data.metrics.stake;
         document.getElementById("metric-signal").textContent = data.metrics.signal;
@@ -403,6 +446,11 @@
         renderHistory(data.history);
         renderDigits(data.digits);
         renderLogs(data.logs);
+
+        if (hasNewPosition) {
+            playTradeBeep();
+        }
+        knownPositionIds = incomingPositionIds;
     }
 
     function showFlash(message, category = "success") {
@@ -512,6 +560,9 @@
                 const data = await response.json();
                 if (data.metrics) {
                     applyDashboardData(data);
+                }
+                if (response.ok && action === "{{ url_for('manual_trade') }}") {
+                    playTradeBeep();
                 }
                 showFlash(data.message || "Action complete.", response.ok ? "success" : "error");
             } catch (error) {
@@ -643,6 +694,9 @@
     setupTokenMemory();
     setupIdleLogout();
     setupAsyncActions();
+    ["click", "keydown", "touchstart"].forEach((eventName) => {
+        window.addEventListener(eventName, unlockTradeBeep, { once: true, passive: true });
+    });
     setInterval(refreshDashboard, 4000);
 </script>
 {% endblock %}
