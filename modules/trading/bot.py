@@ -149,6 +149,16 @@ class DerivBot:
         if self.positions_callback:
             self.positions_callback(positions)
 
+    def _forget_open_position(self, contract_id):
+        if not contract_id:
+            return
+        remaining = [
+            pos for pos in self.open_positions
+            if str(pos.get('contract_id')) != str(contract_id)
+        ]
+        if len(remaining) != len(self.open_positions):
+            self._publish_positions(remaining)
+
     def _remember_open_position(self, contract_id, contract_type: str, buy_price: float, payout: float = 0.0):
         if not contract_id:
             return
@@ -172,6 +182,7 @@ class DerivBot:
         if not contract_id:
             return
         contract_id = str(contract_id)
+        self._forget_open_position(contract_id)
         stake = self._safe_float(stake)
         profit_loss = self._safe_float(profit_loss)
         contract_value = self._safe_float(contract_value)
@@ -1219,6 +1230,7 @@ class DerivBot:
             self.log_message(f"Close error for {contract_id}: {sell['error']['message']}", "ERROR")
             return False
         self.log_message(f"Position {contract_id} closed successfully")
+        self._forget_open_position(contract_id)
         await self.get_open_positions(subscribe=True)
         await self.refresh_trade_history_once()
         return True
