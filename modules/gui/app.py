@@ -18,6 +18,7 @@ class DerivUwezoApp:
         self.root.title("UWEZO-FX Deriv Trading Bot")
         self.root.geometry("1400x900")
         self.root.configure(bg=ModernUI.COLORS['bg_dark'])
+        ModernUI.configure_ttk_styles(self.root)
         set_app_icon(self.root)
 
         self.user_manager = SupabaseUserManager()
@@ -30,6 +31,7 @@ class DerivUwezoApp:
         self.loop = None
         self.log_queue = queue.Queue()
         self.log_text = None
+        self.session_api_token = ""
 
         self.logo_image = load_logo()
 
@@ -60,14 +62,16 @@ class DerivUwezoApp:
             widget.destroy()
         self.root.configure(bg=ModernUI.COLORS['bg_dark'])
         card = ModernCard(self.root, title=None)
-        card.pack(expand=True, padx=50, pady=50, fill='both')
+        card.pack(expand=True, padx=90, pady=70, fill='both')
         if self.logo_image:
             tk.Label(card.content, image=self.logo_image, bg=ModernUI.COLORS['bg_card']).pack(pady=10)
         else:
             tk.Label(card.content, text="UWEZO-FX", font=('Montserrat', 24, 'bold'),
                      fg=ModernUI.COLORS['accent_primary'], bg=ModernUI.COLORS['bg_card']).pack(pady=10)
-        tk.Label(card.content, text="Advanced Multi-Strategy Trading Bot",
-                 font=('Segoe UI', 10), fg=ModernUI.COLORS['text_secondary'], bg=ModernUI.COLORS['bg_card']).pack()
+        tk.Label(card.content, text="UWEZO-FX DERIV TRADING CONSOLE",
+                 font=('Segoe UI', 15, 'bold'), fg=ModernUI.COLORS['text_primary'], bg=ModernUI.COLORS['bg_card']).pack()
+        tk.Label(card.content, text="Deriv market analysis, bot controls, and live account metrics",
+                 font=('Segoe UI', 10), fg=ModernUI.COLORS['text_secondary'], bg=ModernUI.COLORS['bg_card']).pack(pady=(4, 0))
         form = tk.Frame(card.content, bg=ModernUI.COLORS['bg_card'])
         form.pack(pady=20)
         tk.Label(form, text="Username", fg=ModernUI.COLORS['text_secondary'], bg=ModernUI.COLORS['bg_card']).grid(row=0, column=0, padx=5, pady=5, sticky='w')
@@ -282,25 +286,25 @@ class DerivUwezoApp:
     def update_balance(self, balance, currency):
         def _update():
             if self.ui_active and self.balance_label and self.balance_label.winfo_exists():
-                self.balance_label.config(text=f"💰 Balance: {balance:.2f} {currency}")
+                self.balance_label.config(text=f"Balance: {balance:.2f} {currency}")
         self.root.after(0, _update)
 
     def update_stake_display(self, stake, level):
         def _update():
             if self.ui_active and self.stake_label and self.stake_label.winfo_exists():
-                self.stake_label.config(text=f"🎯 Stake: {stake:.2f} (L{level})")
+                self.stake_label.config(text=f"Stake: {stake:.2f} (L{level})")
         self.root.after(0, _update)
 
     def update_signal(self, signal):
         def _update():
             if self.ui_active and self.signal_label and self.signal_label.winfo_exists():
-                self.signal_label.config(text=f"📊 Signal: {signal}")
+                self.signal_label.config(text=f"Signal: {signal}")
         self.root.after(0, _update)
 
     def update_confidence(self, confidence):
         def _update():
             if self.ui_active and self.confidence_label and self.confidence_label.winfo_exists():
-                self.confidence_label.config(text=f"📈 Confidence: {confidence}%")
+                self.confidence_label.config(text=f"Confidence: {confidence}%")
         self.root.after(0, _update)
 
     def update_digit_stats(self, stats_dict):
@@ -368,56 +372,38 @@ class DerivUwezoApp:
             self.history_tree.tag_configure('neutral', foreground='#E0E7FF') # White for neutral
             
             for trade in trades:
-                # Determine contract type display
-                contract_type = trade.get('contract_type', trade.get('type', ''))
-                type_display = self._format_contract_type(contract_type)
-                
-                # Format ref ID - show first 6-8 chars or full ID if short
-                ref_id = str(trade.get('ref_id', trade.get('contract_id', '')))
-                if len(ref_id) > 10:
-                    ref_id = ref_id[-8:]  # Show last 8 digits like Deriv
-                
-                # Get currency (default to USD)
                 currency = trade.get('currency', 'USD')
-                
-                # Format buy time
-                buy_time = trade.get('buy_time', trade.get('start_time', ''))
-                buy_time = self._format_timestamp(buy_time)
-                
-                # Format stake
                 stake = trade.get('stake', trade.get('buy_price', 0))
                 try:
                     stake_str = f"{float(stake):.2f}" if stake else "0.00"
                 except (ValueError, TypeError):
                     stake_str = "0.00"
-                
-                # Format sell time
-                sell_time = trade.get('sell_time', trade.get('end_time', ''))
-                sell_time = self._format_timestamp(sell_time)
-                
-                # Format contract value (payout/sell price)
+
                 contract_value = trade.get('contract_value', trade.get('payout', trade.get('sell_price', 0)))
                 try:
-                    contract_str = f"{float(contract_value):.2f}" if contract_value else "0.00"
+                    contract_val = float(contract_value) if contract_value else 0.0
+                    contract_str = f"{contract_val:.2f}"
                 except (ValueError, TypeError):
+                    contract_val = 0.0
                     contract_str = "0.00"
-                
-                # Get profit/loss
+
                 profit = trade.get('profit_loss', 0)
                 try:
                     profit_val = float(profit) if profit else 0.0
-                    profit_str = f"{profit_val:.2f}"
+                    if profit_val == 0.0 and (contract_val or float(stake or 0)):
+                        profit_val = contract_val - float(stake or 0)
+                    profit_str = f"{profit_val:+.2f}" if profit_val else "0.00"
                 except (ValueError, TypeError):
-                    profit_val = 0.0
-                    profit_str = "0.00"
+                    try:
+                        profit_val = contract_val - float(stake or 0)
+                        profit_str = f"{profit_val:+.2f}" if profit_val else "0.00"
+                    except (ValueError, TypeError):
+                        profit_val = 0.0
+                        profit_str = "0.00"
                 
                 values = (
-                    type_display,
-                    ref_id,
                     currency,
-                    buy_time,
                     stake_str,
-                    sell_time,
                     contract_str,
                     profit_str
                 )
@@ -470,24 +456,24 @@ class DerivUwezoApp:
         self.manual_btn2.pack_forget()
         if contract == "Rise/Fall":
             self.manual_duration_label.config(text="Duration (min):")
-            self.manual_btn1.config(text="📈 BUY", command=self.manual_rise)
-            self.manual_btn2.config(text="📉 SELL", command=self.manual_fall)
+            self.manual_btn1.config(text="BUY", command=self.manual_rise)
+            self.manual_btn2.config(text="SELL", command=self.manual_fall)
         elif contract == "Higher/Lower":
             self.manual_duration_label.config(text="Duration (min):")
-            self.manual_btn1.config(text="⬆️ HIGHER", command=self.manual_higher)
-            self.manual_btn2.config(text="⬇️ LOWER", command=self.manual_lower)
+            self.manual_btn1.config(text="HIGHER", command=self.manual_higher)
+            self.manual_btn2.config(text="LOWER", command=self.manual_lower)
         elif contract == "Touch/No Touch":
             self.manual_duration_label.config(text="Duration (min):")
-            self.manual_btn1.config(text="🎯 TOUCH", command=self.manual_touch)
-            self.manual_btn2.config(text="🚫 NO TOUCH", command=self.manual_no_touch)
+            self.manual_btn1.config(text="TOUCH", command=self.manual_touch)
+            self.manual_btn2.config(text="NO TOUCH", command=self.manual_no_touch)
         elif contract == "Even/Odd":
             self.manual_duration_label.config(text="Duration (ticks):")
-            self.manual_btn1.config(text="🔵 EVEN", command=self.manual_even)
-            self.manual_btn2.config(text="🔴 ODD", command=self.manual_odd)
+            self.manual_btn1.config(text="EVEN", command=self.manual_even)
+            self.manual_btn2.config(text="ODD", command=self.manual_odd)
         elif contract == "Over/Under":
             self.manual_duration_label.config(text="Duration (ticks):")
-            self.manual_btn1.config(text="⬆️ OVER 1-3", command=self.manual_over)
-            self.manual_btn2.config(text="⬇️ UNDER 6-8", command=self.manual_under)
+            self.manual_btn1.config(text="OVER 1-3", command=self.manual_over)
+            self.manual_btn2.config(text="UNDER 6-8", command=self.manual_under)
         self.manual_btn1.pack(side='left', padx=5)
         self.manual_btn2.pack(side='left', padx=5)
 
@@ -533,10 +519,11 @@ class DerivUwezoApp:
             asyncio.run_coroutine_threadsafe(self.bot.close_position(int(contract_id)), self.loop)
 
     def start_bot(self):
-        token = self.token_var.get().strip()
+        token = self.token_var.get().strip() or self.session_api_token
         if not token:
             messagebox.showerror("Error", "API Token required")
             return
+        self.session_api_token = token
         try:
             app_id = int(self.app_id_var.get())
             symbol = self.symbol_var.get()
@@ -684,30 +671,41 @@ class DerivUwezoApp:
         for widget in self.root.winfo_children():
             widget.destroy()
         self.root.configure(bg=ModernUI.COLORS['bg_dark'])
+        ModernUI.configure_ttk_styles(self.root)
 
         # Top bar
-        top_frame = tk.Frame(self.root, bg=ModernUI.COLORS['bg_card'], height=60)
-        top_frame.pack(fill='x')
+        top_frame = tk.Frame(
+            self.root,
+            bg=ModernUI.COLORS['bg_card'],
+            height=72,
+            highlightbackground=ModernUI.COLORS['border'],
+            highlightthickness=1,
+        )
+        top_frame.pack(fill='x', padx=10, pady=(10, 5))
         if self.logo_image:
             logo_label = tk.Label(top_frame, image=self.logo_image, bg=ModernUI.COLORS['bg_card'])
-            logo_label.pack(side='left', padx=10, pady=5)
-        tk.Label(top_frame, text="UWEZO-FX DERIV BOT", font=('Montserrat', 16, 'bold'),
-                 fg='#6C63FF', bg=ModernUI.COLORS['bg_card']).pack(side='left', padx=5)
+            logo_label.pack(side='left', padx=(14, 10), pady=8)
+        brand_frame = tk.Frame(top_frame, bg=ModernUI.COLORS['bg_card'])
+        brand_frame.pack(side='left', padx=4, pady=8)
+        tk.Label(brand_frame, text="UWEZO-FX DERIV BOT", font=('Montserrat', 17, 'bold'),
+                 fg=ModernUI.COLORS['accent_primary'], bg=ModernUI.COLORS['bg_card']).pack(anchor='w')
+        tk.Label(brand_frame, text="Deriv analysis and execution console", font=('Segoe UI', 9),
+                 fg=ModernUI.COLORS['text_secondary'], bg=ModernUI.COLORS['bg_card']).pack(anchor='w')
         tk.Label(top_frame, text=f"Welcome, {self.current_user.get('username', 'Trader')}",
                  fg=ModernUI.COLORS['text_secondary'], bg=ModernUI.COLORS['bg_card'],
-                 font=('Segoe UI', 9)).pack(side='right', padx=10)
+                 font=('Segoe UI', 9, 'bold')).pack(side='right', padx=10)
         logout_btn = ModernUI.create_gradient_button(top_frame, "Logout", self.logout, 'danger')
         logout_btn.pack(side='right', padx=10, pady=5)
 
         # Main container
         main_pane = tk.PanedWindow(self.root, orient=tk.HORIZONTAL, bg=ModernUI.COLORS['bg_dark'], sashrelief='raised')
-        main_pane.pack(fill='both', expand=True, padx=10, pady=5)
+        main_pane.pack(fill='both', expand=True, padx=10, pady=(0, 10))
 
         # LEFT: SETTINGS + MANUAL TRADE
         left_frame = tk.Frame(main_pane, bg=ModernUI.COLORS['bg_dark'], width=500)
         main_pane.add(left_frame, width=500)
 
-        settings_card = ModernCard(left_frame, title="⚙️ TRADING SETTINGS")
+        settings_card = ModernCard(left_frame, title="BOT SETTINGS")
         settings_card.pack(fill='both', expand=True)
 
         settings_canvas = tk.Canvas(settings_card.content, bg=ModernUI.COLORS['bg_card'], highlightthickness=0)
@@ -749,8 +747,11 @@ class DerivUwezoApp:
 
         self.app_id_var = tk.StringVar(value=str(Settings.DERIV_APP_ID))
         self.app_id_entry = add_label_entry(settings_scroll, "App ID:", self.app_id_var, 10, show="*")
-        self.token_var = tk.StringVar()
+        self.token_var = tk.StringVar(value=self.session_api_token)
         self.token_entry = add_label_entry(settings_scroll, "API Token:", self.token_var, 30, show="*")
+        tk.Label(settings_scroll, text="Token stays active until logout.", fg=ModernUI.COLORS['text_muted'],
+                 bg=ModernUI.COLORS['bg_card'], font=('Segoe UI', 8)).grid(row=row, column=0, sticky='w', padx=10, pady=(0, 4))
+        row += 1
 
         self.show_secrets_var = tk.BooleanVar(value=False)
         show_cb = tk.Checkbutton(settings_scroll, text="Show secrets", variable=self.show_secrets_var,
@@ -838,19 +839,19 @@ class DerivUwezoApp:
 
         btn_frame = tk.Frame(settings_scroll, bg=ModernUI.COLORS['bg_card'])
         btn_frame.grid(row=row, column=0, columnspan=2, pady=10)
-        self.start_btn = ModernUI.create_gradient_button(btn_frame, "▶ RUN BOT", self.start_bot, 'success')
+        self.start_btn = ModernUI.create_gradient_button(btn_frame, "RUN BOT", self.start_bot, 'success')
         self.start_btn.pack(side='left', padx=5)
-        self.stop_btn = ModernUI.create_gradient_button(btn_frame, "⏹ STOP BOT", self.stop_bot, 'danger')
+        self.stop_btn = ModernUI.create_gradient_button(btn_frame, "STOP BOT", self.stop_bot, 'danger')
         self.stop_btn.pack(side='left', padx=5)
         self.stop_btn.config(state='disabled')
-        reset_mart_btn = ModernUI.create_gradient_button(btn_frame, "🔄 Reset Martingale", self.reset_martingale, 'warning')
+        reset_mart_btn = ModernUI.create_gradient_button(btn_frame, "RESET MARTINGALE", self.reset_martingale, 'warning')
         reset_mart_btn.pack(side='left', padx=5)
         row += 1
 
         # Manual Trade Section
         ttk.Separator(settings_scroll, orient='horizontal').grid(row=row, column=0, columnspan=2, sticky='ew', pady=10)
         row += 1
-        tk.Label(settings_scroll, text="🖐️ MANUAL TRADE", fg=ModernUI.COLORS['accent_primary'],
+        tk.Label(settings_scroll, text="MANUAL TRADING", fg=ModernUI.COLORS['accent_primary'],
                  bg=ModernUI.COLORS['bg_card'], font=('Montserrat', 10, 'bold')).grid(row=row, column=0, columnspan=2, pady=(0,5))
         row += 1
 
@@ -887,9 +888,9 @@ class DerivUwezoApp:
 
         man_btn_frame = tk.Frame(settings_scroll, bg=ModernUI.COLORS['bg_card'])
         man_btn_frame.grid(row=row, column=0, columnspan=2, pady=10)
-        self.manual_btn1 = ModernUI.create_gradient_button(man_btn_frame, "📈 BUY", self.manual_rise, 'success')
+        self.manual_btn1 = ModernUI.create_gradient_button(man_btn_frame, "BUY", self.manual_rise, 'success')
         self.manual_btn1.pack(side='left', padx=5)
-        self.manual_btn2 = ModernUI.create_gradient_button(man_btn_frame, "📉 SELL", self.manual_fall, 'danger')
+        self.manual_btn2 = ModernUI.create_gradient_button(man_btn_frame, "SELL", self.manual_fall, 'danger')
         self.manual_btn2.pack(side='left', padx=5)
         row += 1
 
@@ -901,22 +902,34 @@ class DerivUwezoApp:
         right_frame = tk.Frame(main_pane, bg=ModernUI.COLORS['bg_dark'])
         main_pane.add(right_frame, width=900)
 
-        status_frame = tk.Frame(right_frame, bg=ModernUI.COLORS['bg_card'], height=35)
-        status_frame.pack(fill='x', pady=(0,5))
-        self.balance_label = tk.Label(status_frame, text="💰 Balance: --", fg='#00D9A5', bg=ModernUI.COLORS['bg_card'], font=('Segoe UI', 9, 'bold'))
-        self.balance_label.pack(side='left', padx=8)
-        self.stake_label = tk.Label(status_frame, text="🎯 Stake: --", fg='#3FA2F7', bg=ModernUI.COLORS['bg_card'], font=('Segoe UI', 9))
-        self.stake_label.pack(side='left', padx=8)
-        self.signal_label = tk.Label(status_frame, text="📊 Signal: --", fg='#FFB443', bg=ModernUI.COLORS['bg_card'], font=('Segoe UI', 9))
-        self.signal_label.pack(side='left', padx=8)
-        self.confidence_label = tk.Label(status_frame, text="📈 Confidence: --", fg='#6C63FF', bg=ModernUI.COLORS['bg_card'], font=('Segoe UI', 9))
-        self.confidence_label.pack(side='left', padx=8)
+        status_frame = tk.Frame(right_frame, bg=ModernUI.COLORS['bg_dark'], height=46)
+        status_frame.pack(fill='x', pady=(0, 8))
+
+        def make_metric(parent, text, color):
+            label = tk.Label(
+                parent,
+                text=text,
+                fg=color,
+                bg=ModernUI.COLORS['bg_sidebar'],
+                font=('Segoe UI', 9, 'bold'),
+                padx=12,
+                pady=8,
+                highlightbackground=ModernUI.COLORS['border'],
+                highlightthickness=1,
+            )
+            label.pack(side='left', padx=(0, 8), fill='x')
+            return label
+
+        self.balance_label = make_metric(status_frame, "Balance: --", ModernUI.COLORS['accent_success'])
+        self.stake_label = make_metric(status_frame, "Stake: --", ModernUI.COLORS['accent_info'])
+        self.signal_label = make_metric(status_frame, "Signal: --", ModernUI.COLORS['accent_warning'])
+        self.confidence_label = make_metric(status_frame, "Confidence: --", ModernUI.COLORS['accent_primary'])
 
         notebook = ttk.Notebook(right_frame)
         notebook.pack(fill='both', expand=True)
 
         positions_tab = tk.Frame(notebook, bg=ModernUI.COLORS['bg_dark'])
-        notebook.add(positions_tab, text="📋 Positions/History")
+        notebook.add(positions_tab, text="Positions/History")
         sub_notebook = ttk.Notebook(positions_tab)
         sub_notebook.pack(fill='both', expand=True)
 
@@ -942,28 +955,22 @@ class DerivUwezoApp:
         hist_panel.pack(fill='both', expand=True, padx=5, pady=5)
         hist_btn_frame = tk.Frame(hist_panel, bg=ModernUI.COLORS['bg_card'])
         hist_btn_frame.pack(fill='x', pady=5)
-        refresh_hist_btn = ModernUI.create_gradient_button(hist_btn_frame, "🔄 Refresh History", self.refresh_trade_history, 'info')
+        refresh_hist_btn = ModernUI.create_gradient_button(hist_btn_frame, "Refresh History", self.refresh_trade_history, 'info')
         refresh_hist_btn.pack(side='left', padx=5)
 
         hist_tree_frame = tk.Frame(hist_panel, bg=ModernUI.COLORS['bg_card'])
         hist_tree_frame.pack(fill='both', expand=True)
         
-        # Column headers matching Deriv report
-        hist_columns = ('Type', 'Ref. ID', 'Currency', 'Buy time', 'Stake', 'Sell time', 'Contract', 'Profit/Loss')
+        hist_columns = ('Currency', 'Stake', 'Contract', 'Profit/Loss')
         self.history_tree = ttk.Treeview(hist_tree_frame, columns=hist_columns, show='headings', height=12)
         
-        # Set column widths and alignments to match Deriv report style
         col_config = {
-            'Type': {'width': 70, 'anchor': 'center'},
-            'Ref. ID': {'width': 100, 'anchor': 'w'},
-            'Currency': {'width': 60, 'anchor': 'center'},
-            'Buy time': {'width': 150, 'anchor': 'w'},
-            'Stake': {'width': 70, 'anchor': 'e'},
-            'Sell time': {'width': 150, 'anchor': 'w'},
-            'Contract': {'width': 80, 'anchor': 'e'},
-            'Profit/Loss': {'width': 80, 'anchor': 'e'},
+            'Currency': {'width': 90, 'anchor': 'center'},
+            'Stake': {'width': 110, 'anchor': 'e'},
+            'Contract': {'width': 120, 'anchor': 'e'},
+            'Profit/Loss': {'width': 120, 'anchor': 'e'},
         }
-        
+
         for col in hist_columns:
             self.history_tree.heading(col, text=col)
             self.history_tree.column(col, 
@@ -981,7 +988,7 @@ class DerivUwezoApp:
         self.history_tree.configure(yscrollcommand=scroll_hist_v.set, xscrollcommand=scroll_hist_h.set)
 
         stats_tab = tk.Frame(notebook, bg=ModernUI.COLORS['bg_dark'])
-        notebook.add(stats_tab, text="🔢 Digit Stats")
+        notebook.add(stats_tab, text="Digit Stats")
         stats_card_inner = ModernCard(stats_tab, title=None)
         stats_card_inner.pack(fill='both', expand=True, padx=5, pady=5)
         self.digit_labels = {}
@@ -1002,7 +1009,7 @@ class DerivUwezoApp:
             self.digit_labels[d] = (digit_label, percent_label)
 
         log_tab = tk.Frame(notebook, bg=ModernUI.COLORS['bg_dark'])
-        notebook.add(log_tab, text="📋 Event Log")
+        notebook.add(log_tab, text="Event Log")
         log_frame = tk.Frame(log_tab, bg=ModernUI.COLORS['bg_card'])
         log_frame.pack(fill='both', expand=True, padx=5, pady=5)
         self.log_text = tk.Text(log_frame, bg='#0E1628', fg='#E0E7FF', insertbackground='white', font=('Consolas', 8), wrap='word')
@@ -1019,4 +1026,5 @@ class DerivUwezoApp:
         self.stop_bot()
         self.current_user = None
         self.is_logged_in = False
+        self.session_api_token = ""
         self.show_login_screen()

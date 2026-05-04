@@ -50,6 +50,7 @@ MANUAL_CONTRACT_OPTIONS = [
     "Even/Odd",
     "Over/Under",
 ]
+
 FALLBACK_SYMBOLS = [
     "R_10",
     "R_25",
@@ -111,6 +112,7 @@ class WebBotManager:
                 "manual_stake": "5",
                 "manual_duration": "1",
             },
+            "session_token": "",
             "metrics": {
                 "balance": "--",
                 "stake": "--",
@@ -206,21 +208,24 @@ class WebBotManager:
     def _update_history(self, trades):
         normalized = []
         for trade in trades:
+            stake_value = float(trade.get("stake", trade.get("buy_price", 0)) or 0)
+            contract_value = float(
+                trade.get("contract_value", trade.get("payout", trade.get("sell_price", 0)) or 0)
+            )
             raw_profit_loss = trade.get("profit_loss", "0.00")
             try:
-                profit_value = float(raw_profit_loss)
+                profit_value = float(raw_profit_loss) if raw_profit_loss not in (None, "") else contract_value - stake_value
+                if profit_value == 0.0 and (stake_value or contract_value):
+                    profit_value = contract_value - stake_value
                 profit_loss = f"{profit_value:+.2f}" if profit_value else "0.00"
             except (TypeError, ValueError):
-                profit_loss = str(raw_profit_loss)
+                profit_value = contract_value - stake_value
+                profit_loss = f"{profit_value:+.2f}" if profit_value else "0.00"
             normalized.append(
                 {
-                    "type": str(trade.get("contract_type", trade.get("type", ""))),
-                    "ref_id": str(trade.get("ref_id", trade.get("contract_id", ""))),
                     "currency": str(trade.get("currency", "USD")),
-                    "buy_time": str(trade.get("buy_time", trade.get("start_time", ""))),
-                    "stake": f"{float(trade.get('stake', trade.get('buy_price', 0)) or 0):.2f}",
-                    "sell_time": str(trade.get("sell_time", trade.get("end_time", ""))),
-                    "contract": f"{float(trade.get('contract_value', trade.get('payout', trade.get('sell_price', 0)) or 0)):.2f}",
+                    "stake": f"{stake_value:.2f}",
+                    "contract": f"{contract_value:.2f}",
                     "profit_loss": profit_loss,
                 }
             )
@@ -249,6 +254,7 @@ class WebBotManager:
                 "last_error": self.state["last_error"],
                 "history_total": f"{history_total:+.2f}" if history_total else "0.00",
                 "last_updated": self.state["last_updated"],
+                "token_saved": bool(self.state.get("session_token")),
             }
 
     def _set_error(self, message):
@@ -273,6 +279,18 @@ class WebBotManager:
                 if value is not None:
                     self.state["config"][field] = value.strip()
             self._touch()
+
+    def remember_token(self, token):
+        token = (token or "").strip()
+        if not token:
+            return
+        with self.lock:
+            self.state["session_token"] = token
+            self._touch()
+
+    def get_session_token(self):
+        with self.lock:
+            return self.state.get("session_token", "")
 
     def _make_config(self):
         config_values = self.state["config"]
@@ -614,16 +632,25 @@ def healthz():
 def start_bot():
     manager = current_manager()
     if not manager:
+        if request.headers.get("X-Requested-With") == "fetch":
+            return jsonify({"success": False, "message": "Please log in first."}), 401
         flash("Please log in first.", "error")
         return redirect(url_for("login"))
 
-    token = request.form.get("token", "").strip()
+    token = request.form.get("token", "").strip() or manager.get_session_token()
     if not token:
+        if request.headers.get("X-Requested-With") == "fetch":
+            return jsonify({"success": False, "message": "API token is required."}), 400
         flash("API token is required.", "error")
         return redirect(url_for("dashboard"))
 
     manager.update_config_from_form(request.form)
+    manager.remember_token(token)
     success, message = manager.start_bot(token)
+    if request.headers.get("X-Requested-With") == "fetch":
+        payload = manager.snapshot()
+        payload.update({"success": success, "message": message})
+        return jsonify(payload), 200 if success else 400
     flash(message, "success" if success else "error")
     return redirect(url_for("dashboard"))
 
@@ -633,9 +660,15 @@ def start_bot():
 def stop_bot():
     manager = current_manager()
     if not manager:
+        if request.headers.get("X-Requested-With") == "fetch":
+            return jsonify({"success": False, "message": "Please log in first."}), 401
         flash("Please log in first.", "error")
         return redirect(url_for("login"))
     success, message = manager.stop_bot()
+    if request.headers.get("X-Requested-With") == "fetch":
+        payload = manager.snapshot()
+        payload.update({"success": success, "message": message})
+        return jsonify(payload), 200 if success else 400
     flash(message, "success" if success else "error")
     return redirect(url_for("dashboard"))
 
@@ -645,9 +678,15 @@ def stop_bot():
 def reset_martingale():
     manager = current_manager()
     if not manager:
+        if request.headers.get("X-Requested-With") == "fetch":
+            return jsonify({"success": False, "message": "Please log in first."}), 401
         flash("Please log in first.", "error")
         return redirect(url_for("login"))
     success, message = manager.reset_martingale()
+    if request.headers.get("X-Requested-With") == "fetch":
+        payload = manager.snapshot()
+        payload.update({"success": success, "message": message})
+        return jsonify(payload), 200 if success else 400
     flash(message, "success" if success else "error")
     return redirect(url_for("dashboard"))
 
@@ -657,10 +696,16 @@ def reset_martingale():
 def set_mode():
     manager = current_manager()
     if not manager:
+        if request.headers.get("X-Requested-With") == "fetch":
+            return jsonify({"success": False, "message": "Please log in first."}), 401
         flash("Please log in first.", "error")
         return redirect(url_for("login"))
     mode = request.form.get("mode", "Monitor")
     success, message = manager.set_mode(mode)
+    if request.headers.get("X-Requested-With") == "fetch":
+        payload = manager.snapshot()
+        payload.update({"success": success, "message": message})
+        return jsonify(payload), 200 if success else 400
     flash(message, "success" if success else "error")
     return redirect(url_for("dashboard"))
 
@@ -670,12 +715,18 @@ def set_mode():
 def manual_trade():
     manager = current_manager()
     if not manager:
+        if request.headers.get("X-Requested-With") == "fetch":
+            return jsonify({"success": False, "message": "Please log in first."}), 401
         flash("Please log in first.", "error")
         return redirect(url_for("login"))
     try:
         success, message = manager.manual_trade(request.form)
     except Exception as exc:
         success, message = False, f"Invalid manual trade settings: {exc}"
+    if request.headers.get("X-Requested-With") == "fetch":
+        payload = manager.snapshot()
+        payload.update({"success": success, "message": message})
+        return jsonify(payload), 200 if success else 400
     flash(message, "success" if success else "error")
     return redirect(url_for("dashboard"))
 
@@ -685,10 +736,22 @@ def manual_trade():
 def close_position():
     manager = current_manager()
     if not manager:
+        if request.headers.get("X-Requested-With") == "fetch":
+            return jsonify({"success": False, "message": "Please log in first."}), 401
         flash("Please log in first.", "error")
         return redirect(url_for("login"))
     contract_id = request.form.get("contract_id", "").strip()
-    success, message = manager.close_position(contract_id)
+    if not contract_id:
+        success, message = False, "Contract ID is required."
+    else:
+        try:
+            success, message = manager.close_position(contract_id)
+        except Exception as exc:
+            success, message = False, f"Unable to close position: {exc}"
+    if request.headers.get("X-Requested-With") == "fetch":
+        payload = manager.snapshot()
+        payload.update({"success": success, "message": message})
+        return jsonify(payload), 200 if success else 400
     flash(message, "success" if success else "error")
     return redirect(url_for("dashboard"))
 
@@ -698,9 +761,15 @@ def close_position():
 def refresh_bot_data():
     manager = current_manager()
     if not manager:
+        if request.headers.get("X-Requested-With") == "fetch":
+            return jsonify({"success": False, "message": "Please log in first."}), 401
         flash("Please log in first.", "error")
         return redirect(url_for("login"))
     success, message = manager.refresh_data()
+    if request.headers.get("X-Requested-With") == "fetch":
+        payload = manager.snapshot()
+        payload.update({"success": success, "message": message})
+        return jsonify(payload), 200 if success else 400
     flash(message, "success" if success else "error")
     return redirect(url_for("dashboard"))
 

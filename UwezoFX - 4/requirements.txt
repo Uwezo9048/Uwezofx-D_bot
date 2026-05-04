@@ -1,0 +1,13 @@
+MetaTrader5
+pandas
+numpy
+scipy
+scikit-learn
+Pillow
+supabase
+python-dotenv
+sib-api-v3-sdk
+africastalking
+cryptography
+requests
+myfxbook

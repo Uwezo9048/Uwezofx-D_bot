@@ -39,7 +39,7 @@ class BotConfig:
     auto_trade: bool = False
     adaptive_mode: bool = False
     min_digit_edge: float = 8.0
-    min_digit_confidence: int = 68
+    min_digit_confidence: int = 65
     
     
     def save(self, filepath: str = "bot_config.json"):

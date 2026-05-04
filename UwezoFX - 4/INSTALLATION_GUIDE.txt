@@ -1,0 +1,90 @@
+================================================================================
+        UWEZO-FX TRADING SYSTEM – INSTALLATION GUIDE
+================================================================================
+
+Thank you for choosing UWEZO-FX. Follow these steps to install and run the software.
+
+-------------------------------------------------------------------------------
+SYSTEM REQUIREMENTS
+-------------------------------------------------------------------------------
+- Windows 7 SP1, 8, 8.1, 10, or 11 (64-bit recommended)
+- MetaTrader 5 installed and logged in (download from your broker)
+- Internet connection (for Supabase authentication and news)
+- At least 200 MB free disk space
+
+-Make sure MetaTrader 5 is installed and connected to your broker, before starting Bot.
+
+-------------------------------------------------------------------------------
+STEP 1: DOWNLOAD THE INSTALLER
+-------------------------------------------------------------------------------
+Download the file "UWEZO-FX_Setup_v3.7.exe" from the link provided to you.
+
+If the download does not start automatically, right-click the link and select
+"Save link as...".
+
+-------------------------------------------------------------------------------
+STEP 2: RUN THE INSTALLER
+-------------------------------------------------------------------------------
+1. Locate the downloaded file (usually in your Downloads folder).
+2. Right‑click the file and select "Run as administrator" (recommended).
+3. If Windows SmartScreen appears, click "More info" → "Run anyway".
+4. Follow the on‑screen instructions:
+   - Choose installation folder (default: C:\Program Files\UWEZO-FX)
+   - Select optional shortcuts (Desktop, Start Menu, Startup)
+   - Click "Install"
+5. When finished, do not check "Launch UWEZO-FX" instead "Finish".
+
+-------------------------------------------------------------------------------
+STEP 3: FIRST RUN & LOGIN
+-------------------------------------------------------------------------------
+1. Right‑click the shortcut and select "Run as administrator". The application will open with a login screen.
+2. If you do not have an account, click "Create Account" and fill in:
+   - Username (at least 3 characters)
+   - Email address (valid)
+   - Phone number (with country code, e.g., +254XXXXXXXXX)
+   - Password (at least 6 characters)
+3. After registration, your account will be pending admin approval.
+   You will receive a Login Code via SMS and email once approved.
+4. Once approved, enter your Username and Login Code to log in.
+
+-------------------------------------------------------------------------------
+STEP 4: CONNECT TO METATRADER 5
+-------------------------------------------------------------------------------
+1. In the main window, go to the "Settings" section.
+2. Under "Broker Connection", choose one:
+   - Local MT5 Terminal: if MT5 is installed on the same computer.
+   - Direct Broker Login: enter your broker's server, login, and password.
+3. Click "Connect". The status indicator should turn green ("LIVE").
+4. The dashboard will now show your account balance, equity, and open positions.
+
+-------------------------------------------------------------------------------
+STEP 5: SELECT A SYMBOL
+-------------------------------------------------------------------------------
+1. In "Settings", under "Trading Settings", type or select a symbol (e.g., EURUSD, XAUUSD).
+2. Click "Change". The selected symbol will appear in the top bar.
+
+-------------------------------------------------------------------------------
+STEP 6: START TRADING
+-------------------------------------------------------------------------------
+- Manual trading: On the Dashboard, enter a lot size and click BUY or SELL.
+- Auto trading: Toggle "Auto Trading" ON in the Dashboard.
+- Reversal trading: Enable reversal mode in the Dashboard (set minimum confidence).
+- Trailing stop: Configure in the "Trailing" section.
+
+-------------------------------------------------------------------------------
+TROUBLESHOOTING
+-------------------------------------------------------------------------------
+- If the app does not start, ensure MetaTrader 5 is installed and running.
+- If connection fails, try running the app as Administrator.
+- Log files are stored in %APPDATA%\UWEZO-FX\trading_system.log – share this file if you need support.
+- For help, click "Help Center" in the sidebar or email uwezofx@gmail.com.
+
+-------------------------------------------------------------------------------
+UNINSTALLATION
+-------------------------------------------------------------------------------
+Go to Windows Settings → Apps → UWEZO-FX Trading System → Uninstall.
+All program files and user data (logs, cached data) will be removed.
+
+================================================================================
+                    © 2026 UWEZO-FX – All rights reserved.
+================================================================================

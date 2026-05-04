@@ -1,0 +1,59 @@
+END-USER LICENSE AGREEMENT FOR UWEZO-FX TRADING SYSTEM
+
+IMPORTANT: PLEASE READ THE TERMS AND CONDITIONS OF THIS LICENSE AGREEMENT CAREFULLY BEFORE INSTALLING OR USING THIS SOFTWARE.
+
+BY INSTALLING, COPYING, OR OTHERWISE USING THE UWEZO-FX TRADING SYSTEM ("SOFTWARE"), YOU ACKNOWLEDGE THAT YOU HAVE READ, UNDERSTOOD, AND AGREE TO BE BOUND BY THE TERMS OF THIS AGREEMENT. IF YOU DO NOT AGREE TO THESE TERMS, DO NOT INSTALL OR USE THE SOFTWARE.
+
+1. GRANT OF LICENSE
+   UWEZOFX ("Licensor") grants you a non-exclusive, non-transferable, revocable license to install and use one copy of the Software on a single computer or trading terminal for your personal or internal business purposes. This license does not allow the Software to be used on more than one device simultaneously, nor does it allow the Software to be shared, hosted, or made available over a network where it could be used by multiple users.
+
+2. RESTRICTIONS
+   You may not, and you shall not permit any third party to:
+   - Modify, adapt, translate, reverse engineer, decompile, disassemble, or create derivative works based on the Software or any part thereof.
+   - Rent, lease, lend, sell, sublicense, assign, distribute, or otherwise transfer the Software or any rights granted hereunder to any third party.
+   - Remove, alter, or obscure any proprietary notices, labels, or marks (including copyright, trademark, or patent notices) contained in or on the Software.
+   - Use the Software for any illegal purpose, or in any manner that violates any applicable laws, regulations, or trading platform rules (including MetaTrader 5 terms of service).
+   - Use the Software to engage in high‑frequency, manipulative, or abusive trading practices.
+
+3. NO FINANCIAL ADVICE – IMPORTANT DISCLAIMER
+   THE SOFTWARE IS A TOOL FOR AUTOMATED TRADING BASED ON TECHNICAL INDICATORS AND USER‑CONFIGURABLE PARAMETERS. IT DOES NOT PROVIDE FINANCIAL, INVESTMENT, OR TRADING ADVICE. ALL TRADING DECISIONS, INCLUDING BUT NOT LIMITED TO THE SELECTION OF SYMBOLS, ORDER TYPES, VOLUME, STOP LOSS, TAKE PROFIT, AND THE ENABLING OR DISABLING OF AUTOMATED TRADING FEATURES, ARE SOLELY THE RESPONSIBILITY OF THE USER. THE LICENSOR IS NOT A FINANCIAL ADVISOR, BROKER, OR REGISTERED INVESTMENT ADVISER. PAST PERFORMANCE OF THE SOFTWARE OR ANY TRADING STRATEGY DOES NOT GUARANTEE FUTURE RESULTS. YOU SHOULD CONSULT WITH A QUALIFIED FINANCIAL PROFESSIONAL BEFORE USING THE SOFTWARE FOR LIVE TRADING.
+
+4. RISK ACKNOWLEDGEMENT
+   YOU ACKNOWLEDGE AND AGREE THAT:
+   - Trading in financial markets (including forex, commodities, indices, and cryptocurrencies) involves substantial risk of loss and is not suitable for all investors.
+   - The Software may generate trading signals and execute trades automatically. Market conditions can change rapidly, and the Software may not perform as expected.
+   - Technical failures, connectivity issues, broker restrictions, or errors in the Software may result in losses, including total loss of capital.
+   - The Licensor does not guarantee the accuracy, completeness, timeliness, or reliability of any data, signal, or trade execution.
+   - You are solely responsible for all trading decisions and for monitoring the Software’s activity. You should never rely on the Software without understanding its operation and risks.
+
+5. DISCLAIMER OF WARRANTY
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, TITLE, AND NON‑INFRINGEMENT. THE LICENSOR DOES NOT WARRANT THAT THE SOFTWARE WILL BE ERROR‑FREE, UNINTERRUPTED, SECURE, OR THAT IT WILL MEET YOUR REQUIREMENTS. ANY ORAL OR WRITTEN INFORMATION OR ADVICE GIVEN BY THE LICENSOR OR ITS AUTHORIZED REPRESENTATIVES SHALL NOT CREATE A WARRANTY. SOME JURISDICTIONS DO NOT ALLOW THE EXCLUSION OF IMPLIED WARRANTIES, SO THE ABOVE EXCLUSION MAY NOT APPLY TO YOU.
+
+6. LIMITATION OF LIABILITY
+   TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, IN NO EVENT SHALL THE LICENSOR, ITS OFFICERS, DIRECTORS, EMPLOYEES, AGENTS, OR SUPPLIERS BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR PUNITIVE DAMAGES, INCLUDING WITHOUT LIMITATION, LOSS OF PROFITS, LOSS OF DATA, LOSS OF TRADING CAPITAL, TRADING LOSSES, OR ANY OTHER PECUNIARY LOSS, ARISING OUT OF OR IN CONNECTION WITH THE USE OR INABILITY TO USE THE SOFTWARE, EVEN IF THE LICENSOR HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGES. IN ANY CASE, THE LICENSOR’S TOTAL LIABILITY TO YOU FOR ALL DAMAGES SHALL NOT EXCEED THE AMOUNT YOU PAID FOR THE SOFTWARE (IF ANY). SOME JURISDICTIONS DO NOT ALLOW THE LIMITATION OF LIABILITY FOR CERTAIN DAMAGES, SO THE ABOVE LIMITATION MAY NOT APPLY TO YOU.
+
+7. INDEMNIFICATION
+   You agree to indemnify, defend, and hold harmless the Licensor and its affiliates, officers, directors, employees, and agents from and against any and all claims, liabilities, damages, losses, costs, expenses, or fees (including reasonable attorneys’ fees) arising from your use of the Software, your violation of this Agreement, or your violation of any rights of a third party, including any trading‑related losses incurred by you or any third party as a result of your use of the Software.
+
+8. TERMINATION
+   This Agreement is effective until terminated. The Licensor may terminate this Agreement at any time without notice if you fail to comply with any term or condition of this Agreement. Upon termination, you shall cease all use of the Software and destroy all copies, full or partial, of the Software. The sections entitled "No Financial Advice", "Risk Acknowledgement", "Disclaimer of Warranty", "Limitation of Liability", "Indemnification", and "Governing Law" shall survive any termination of this Agreement.
+
+9. GOVERNING LAW AND DISPUTE RESOLUTION
+   This Agreement shall be governed by and construed in accordance with the laws of the jurisdiction in which the Licensor is established (Kenya), without regard to its conflict of laws principles. Any dispute arising out of or relating to this Agreement or the Software shall be resolved exclusively through binding arbitration in accordance with the rules of the Nairobi Centre for International Arbitration, and judgment upon the award rendered by the arbitrator may be entered in any court having jurisdiction thereof. The arbitration shall take place in Nairobi, Kenya, and shall be conducted in English. Each party shall bear its own costs and attorneys’ fees.
+
+10. ENTIRE AGREEMENT
+    This Agreement constitutes the entire agreement between you and the Licensor concerning the Software and supersedes all prior or contemporaneous oral or written communications, proposals, and representations with respect to the Software or any other subject matter covered by this Agreement.
+
+11. SEVERABILITY
+    If any provision of this Agreement is held to be unenforceable or invalid, such provision shall be enforced to the maximum extent possible, and the remaining provisions shall remain in full force and effect.
+
+12. WAIVER
+    No waiver of any term of this Agreement shall be deemed a further or continuing waiver of such term or any other term, and the Licensor’s failure to assert any right or provision under this Agreement shall not constitute a waiver of such right or provision.
+
+13. CONTACT INFORMATION
+    For inquiries regarding this Agreement or the Software, please contact:
+
+    UWEZOFX
+    Email: uwezofx@gmail.com
+
+Copyright © 2026 UWEZOFX. All rights reserved.

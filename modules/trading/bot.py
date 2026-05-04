@@ -1,5 +1,6 @@
 import asyncio
 import contextlib
+import html
 import json
 import math
 import os
@@ -9,6 +10,7 @@ import sys
 import websockets
 from typing import Optional, List, Dict, Any
 from datetime import datetime
+from pathlib import Path
 from config import BotConfig, Settings
 from modules.trading.indicator import CombinedICTandSMSIndicator, TradeSignal
 from modules.trading.analyzer import MarketAnalyzer
@@ -79,6 +81,19 @@ class DerivBot:
         self.latest_confidence = 0
 
         self.open_positions = []
+        self.history_report_path = Path("reports") / "trade_history_report.html"
+        self.trade_result_cache: Dict[str, Dict[str, Any]] = {}
+
+    def _martingale_confidence(self) -> int:
+        """Confidence floor tied to the active martingale loss level."""
+        if self.consecutive <= 0:
+            return 65
+        if self.consecutive == 1:
+            return 75
+        return 80
+
+    def _apply_martingale_confidence(self, confidence: float) -> int:
+        return min(80, max(self._martingale_confidence(), int(round(confidence or 0))))
 
     def _is_ws_open(self) -> bool:
         if self.ws is None:
@@ -111,6 +126,100 @@ class DerivBot:
         except (TypeError, ValueError):
             return default
 
+    def _normalize_portfolio_contracts(self, contracts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        positions = []
+        for contract in contracts or []:
+            positions.append({
+                'contract_id': contract.get('contract_id', ''),
+                'buy_price': self._safe_float(contract.get('buy_price', contract.get('purchase_price', 0))),
+                'sell_price': self._safe_float(contract.get('sell_price', 0)),
+                'current_price': self._safe_float(contract.get('current_price', contract.get('bid_price', 0))),
+                'payout': self._safe_float(contract.get('payout', 0)),
+                'profit_loss': self._safe_float(contract.get('profit_loss', 0)),
+                'contract_type': contract.get('contract_type', contract.get('type', '')),
+                'status': contract.get('status', 'open'),
+                'expiry_time': contract.get('expiry_time', 0),
+                'entry_tick': contract.get('entry_tick', 0),
+                'entry_time': contract.get('entry_time', contract.get('date_start', 0)),
+            })
+        return positions
+
+    def _publish_positions(self, positions: List[Dict[str, Any]]):
+        self.open_positions = positions
+        if self.positions_callback:
+            self.positions_callback(positions)
+
+    def _remember_open_position(self, contract_id, contract_type: str, buy_price: float, payout: float = 0.0):
+        if not contract_id:
+            return
+        existing = [pos for pos in self.open_positions if str(pos.get('contract_id')) != str(contract_id)]
+        existing.insert(0, {
+            'contract_id': contract_id,
+            'buy_price': buy_price,
+            'sell_price': 0.0,
+            'current_price': buy_price,
+            'payout': payout,
+            'profit_loss': 0.0,
+            'contract_type': contract_type,
+            'status': 'open',
+            'expiry_time': 0,
+            'entry_tick': 0,
+            'entry_time': int(time.time()),
+        })
+        self._publish_positions(existing)
+
+    def _record_trade_result(self, contract_id, contract_type: str, stake: float, contract_value: float, profit_loss: float):
+        if not contract_id:
+            return
+        contract_id = str(contract_id)
+        stake = self._safe_float(stake)
+        profit_loss = self._safe_float(profit_loss)
+        contract_value = self._safe_float(contract_value)
+        if contract_value <= 0 and (stake or profit_loss):
+            contract_value = max(0.0, stake + profit_loss)
+        self.trade_result_cache[contract_id] = {
+            'contract_id': contract_id,
+            'ref_id': contract_id,
+            'contract_type': contract_type or '',
+            'type': contract_type or '',
+            'currency': self.account_currency,
+            'stake': stake,
+            'buy_price': stake,
+            'contract_value': contract_value,
+            'payout': contract_value,
+            'sell_price': contract_value,
+            'profit_loss': profit_loss,
+            '_sort_ts': int(time.time()),
+        }
+
+    def _apply_cached_trade_results(self, rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        merged = []
+        seen = set()
+        for row in rows:
+            contract_id = str(row.get('contract_id') or row.get('ref_id') or '')
+            cached = self.trade_result_cache.get(contract_id)
+            if cached:
+                updated = dict(row)
+                updated.update({
+                    'contract_value': cached['contract_value'],
+                    'payout': cached['contract_value'],
+                    'sell_price': cached['contract_value'],
+                    'profit_loss': cached['profit_loss'],
+                })
+                merged.append(updated)
+                seen.add(contract_id)
+            else:
+                merged.append(row)
+                if contract_id:
+                    seen.add(contract_id)
+
+        for contract_id, cached in self.trade_result_cache.items():
+            if contract_id not in seen:
+                merged.insert(0, dict(cached))
+
+        merged.sort(key=lambda row: row.get('_sort_ts', 0), reverse=True)
+        return merged
+
     def _extract_trade_amounts(self, txn: Dict[str, Any]) -> tuple[float, float, float]:
         buy_price = abs(self._safe_float(
             txn.get(
@@ -125,7 +234,7 @@ class DerivBot:
             )
         ))
         sell_price = max(0.0, self._safe_float(
-            txn.get('sell_price', txn.get('sell', txn.get('sell_amount', 0)))
+            txn.get('sell_price', txn.get('sell_amount', 0))
         ))
         payout = max(0.0, self._safe_float(txn.get('payout', txn.get('payout_price', sell_price))))
         return buy_price, sell_price, payout
@@ -136,13 +245,24 @@ class DerivBot:
             return self._safe_float(profit_value)
 
         buy_price, sell_price, payout = self._extract_trade_amounts(txn)
+        status = str(txn.get('status', txn.get('contract_status', ''))).lower()
+        if buy_price > 0 and status in ('lost', 'loss'):
+            return -buy_price
         if buy_price > 0 and sell_price > 0:
             return sell_price - buy_price
-        if buy_price > 0 and payout > 0:
+        if buy_price > 0 and payout > 0 and status in ('won', 'win'):
             return payout - buy_price
         if buy_price > 0:
             return -buy_price
         return 0.0
+
+    def _calculate_trade_profit_loss(self, stake: float, contract_value: float, fallback=0.0) -> float:
+        """Calculate P/L from the retrieved stake and contract value when Deriv has no explicit P/L."""
+        stake = self._safe_float(stake)
+        contract_value = self._safe_float(contract_value)
+        if stake > 0 or contract_value > 0:
+            return contract_value - stake
+        return self._safe_float(fallback)
 
     def _parse_trade_time(self, value) -> str:
         timestamp = int(self._safe_float(value, 0))
@@ -185,8 +305,6 @@ class DerivBot:
         buy_price = self._safe_float(
             txn.get('buy_price', txn.get('buy', txn.get('amount', txn.get('stake', 0))))
         )
-        if payout > 0 and buy_price > 0:
-            return f"{(payout - buy_price):.2f}"
         return ""
 
     def _build_report_rows_from_statement(self, transactions: List[Dict[str, Any]], limit: int) -> List[Dict[str, Any]]:
@@ -234,6 +352,7 @@ class DerivBot:
                 'buy_price': 0.0,
                 'sell_price': 0.0,
                 'profit_loss': 0.0,
+                'cash_flow': 0.0,
                 'start_ts': 0,
                 'end_ts': 0,
                 'has_buy': False,
@@ -261,6 +380,7 @@ class DerivBot:
                     entry['buy_price'] = buy_price_raw
                 elif amount != 0:
                     entry['buy_price'] = abs(amount)
+                entry['cash_flow'] -= entry['buy_price']
                 entry['has_buy'] = True
                 if transaction_time:
                     entry['start_ts'] = transaction_time
@@ -268,16 +388,15 @@ class DerivBot:
             if is_sell:
                 if sell_price_raw > 0:
                     entry['sell_price'] = sell_price_raw
-                elif payout > 0:
-                    entry['sell_price'] = payout
                 elif amount > 0:
                     entry['sell_price'] = amount
+                entry['cash_flow'] += max(0.0, amount, entry['sell_price'])
                 entry['has_sell'] = True
                 if transaction_time:
                     entry['end_ts'] = transaction_time
 
             profit_value = txn.get('profit_loss')
-            if profit_value not in (None, ""):
+            if profit_value not in (None, "") and not (is_buy or is_sell):
                 entry['profit_loss'] = self._safe_float(profit_value)
 
         trades = []
@@ -285,11 +404,12 @@ class DerivBot:
             if not entry['has_buy']:
                 continue
 
-            if entry['profit_loss'] == 0.0:
-                if entry['has_sell'] and entry['sell_price'] > 0:
-                    entry['profit_loss'] = entry['sell_price'] - entry['buy_price']
-                else:
-                    entry['profit_loss'] = -entry['buy_price']
+            if entry['has_sell']:
+                entry['profit_loss'] = self._calculate_trade_profit_loss(entry['buy_price'], entry['sell_price'], entry['cash_flow'])
+            elif entry['cash_flow'] != 0.0:
+                entry['profit_loss'] = entry['cash_flow']
+            elif entry['profit_loss'] == 0.0:
+                entry['profit_loss'] = -entry['buy_price']
 
             trades.append({
                 'type': entry['contract_type'],           # For compatibility
@@ -313,6 +433,103 @@ class DerivBot:
         trades.sort(key=lambda trade: trade.get('_sort_ts', 0), reverse=True)
         return trades[:limit]
 
+    def _write_trade_history_report(self, trades: List[Dict[str, Any]]):
+        """Write an attractive local HTML report from the same rows sent to the UI."""
+        try:
+            report_path = self.history_report_path
+            report_path.parent.mkdir(parents=True, exist_ok=True)
+
+            total_stake = sum(self._safe_float(t.get('stake', t.get('buy_price', 0))) for t in trades)
+            total_contract = sum(self._safe_float(t.get('contract_value', t.get('payout', t.get('sell_price', 0)))) for t in trades)
+            net_pl = sum(self._safe_float(t.get('profit_loss', 0)) for t in trades)
+            wins = sum(1 for t in trades if self._safe_float(t.get('profit_loss', 0)) > 0)
+            losses = sum(1 for t in trades if self._safe_float(t.get('profit_loss', 0)) < 0)
+            generated_at = datetime.now().strftime('%d %b %Y %H:%M:%S')
+
+            def esc(value) -> str:
+                return html.escape(str(value if value not in (None, "") else "-"))
+
+            rows_html = []
+            for trade in trades:
+                profit = self._safe_float(trade.get('profit_loss', 0))
+                stake = self._safe_float(trade.get('stake', trade.get('buy_price', 0)))
+                contract_value = self._safe_float(trade.get('contract_value', trade.get('payout', trade.get('sell_price', 0))))
+                if profit == 0.0 and (stake or contract_value):
+                    profit = contract_value - stake
+                profit_class = "profit" if profit > 0 else "loss" if profit < 0 else "neutral"
+                rows_html.append(
+                    "<tr>"
+                    f"<td>{esc(trade.get('currency', self.account_currency))}</td>"
+                    f"<td>{stake:.2f}</td>"
+                    f"<td>{contract_value:.2f}</td>"
+                    f"<td class=\"{profit_class}\">{profit:+.2f}</td>"
+                    "</tr>"
+                )
+
+            if not rows_html:
+                rows_html.append('<tr><td colspan="4" class="empty">No trade history yet.</td></tr>')
+
+            net_class = "profit" if net_pl > 0 else "loss" if net_pl < 0 else "neutral"
+            report_html = f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>UWEZO-FX Trade History</title>
+  <style>
+    :root {{ color-scheme: dark; --bg:#07111f; --panel:#101c2e; --line:#263653; --text:#edf4ff; --muted:#9fb0cc; --green:#00d9a5; --red:#ff5e7d; --amber:#ffb443; }}
+    * {{ box-sizing: border-box; }}
+    body {{ margin:0; font-family: Segoe UI, Arial, sans-serif; background: radial-gradient(circle at top left, #1e3b57, var(--bg) 40%); color:var(--text); }}
+    main {{ width:min(1180px, calc(100% - 32px)); margin:32px auto; }}
+    .hero {{ display:flex; justify-content:space-between; gap:18px; align-items:flex-end; margin-bottom:18px; }}
+    h1 {{ margin:0; font-size:clamp(28px, 4vw, 48px); letter-spacing:0; }}
+    .muted {{ color:var(--muted); }}
+    .cards {{ display:grid; grid-template-columns:repeat(4, minmax(150px, 1fr)); gap:12px; margin:18px 0; }}
+    .card {{ background:rgba(16,28,46,.92); border:1px solid var(--line); border-radius:8px; padding:14px; }}
+    .label {{ color:var(--muted); font-size:12px; text-transform:uppercase; font-weight:700; }}
+    .value {{ margin-top:8px; font-size:24px; font-weight:800; }}
+    .table-wrap {{ overflow:auto; border:1px solid var(--line); border-radius:8px; background:rgba(16,28,46,.88); }}
+    table {{ width:100%; border-collapse:collapse; min-width:520px; }}
+    th, td {{ padding:11px 12px; border-bottom:1px solid rgba(38,54,83,.75); text-align:left; white-space:nowrap; }}
+    th {{ color:#d8e6ff; background:#16253b; font-size:12px; text-transform:uppercase; letter-spacing:.04em; }}
+    tr:hover td {{ background:rgba(255,255,255,.035); }}
+    .profit {{ color:var(--green); }}
+    .loss {{ color:var(--red); }}
+    .neutral {{ color:var(--muted); }}
+    .empty {{ text-align:center; color:var(--muted); padding:28px; }}
+    @media (max-width: 760px) {{ .hero {{ display:block; }} .cards {{ grid-template-columns:1fr 1fr; }} }}
+  </style>
+</head>
+<body>
+  <main>
+    <section class="hero">
+      <div>
+        <h1>Trade History</h1>
+        <div class="muted">Generated from Deriv statement/profit data on {esc(generated_at)}</div>
+      </div>
+      <div class="{net_class}">Net Profit/Loss: {net_pl:+.2f} {esc(self.account_currency)}</div>
+    </section>
+    <section class="cards">
+      <div class="card"><div class="label">Contracts</div><div class="value">{len(trades)}</div></div>
+      <div class="card"><div class="label">Wins / Losses</div><div class="value"><span class="profit">{wins}</span> / <span class="loss">{losses}</span></div></div>
+      <div class="card"><div class="label">Total Stake</div><div class="value">{total_stake:.2f}</div></div>
+      <div class="card"><div class="label">Contract Value</div><div class="value">{total_contract:.2f}</div></div>
+    </section>
+    <section class="table-wrap">
+      <table>
+        <thead><tr><th>Currency</th><th>Stake</th><th>Contract</th><th>Profit/Loss</th></tr></thead>
+        <tbody>{''.join(rows_html)}</tbody>
+      </table>
+    </section>
+  </main>
+</body>
+</html>
+"""
+            report_path.write_text(report_html, encoding="utf-8")
+            self.log_message(f"Trade history report updated: {report_path}")
+        except Exception as e:
+            self.log_message(f"Could not write trade history report: {e}", "WARN")
+
     def _digit_win_rate(self, signal: str) -> float:
         stats = self.digit_analyzer.digits
         if signal == TradeSignal.OVER:
@@ -329,9 +546,9 @@ class DerivBot:
 
     def _minimum_trade_confidence(self) -> float:
         try:
-            return float(getattr(self.config, "min_digit_confidence", 62))
+            return float(getattr(self.config, "min_digit_confidence", 65))
         except (TypeError, ValueError):
-            return 62.0
+            return 65.0
 
     def _choose_tick_duration(self, signal: str) -> int:
         if not self.config.auto_ticks:
@@ -417,6 +634,9 @@ class DerivBot:
         self.log_message("🔄 Martingale reset manually: stake reset to base. Next trade result will be ignored.")
         if self.update_stake:
             self.update_stake(self.current_stake, self.consecutive)
+
+        self.latest_confidence = self._martingale_confidence()
+        self.update_confidence_display(self.latest_confidence)
 
     def log_message(self, msg, level="INFO"):
         if self.log:
@@ -643,13 +863,15 @@ class DerivBot:
                                         self.signal_callback(f"{setup_signal} SETUP")
                             trade_signal = await self._check_digit_strategy_entry(current_digit, strategy_code)
                             if trade_signal:
+                                win_rate = self._apply_martingale_confidence(self._digit_win_rate(trade_signal))
+                                self.latest_confidence = win_rate
+                                self.update_confidence_display(win_rate)
                                 if self.signal_callback:
                                     self.signal_callback(trade_signal)
                                 self.log_message(f"🎯 SIGNAL: {trade_signal}")
                                 if self.auto_trade:
                                     now = time.time()
                                     if now - self.last_trade_time >= self.config.cooldown:
-                                        win_rate = self._digit_win_rate(trade_signal)
                                         min_confidence = self._minimum_trade_confidence()
                                         if win_rate >= min_confidence:
                                             await self.signal_queue.put(trade_signal)
@@ -701,7 +923,9 @@ class DerivBot:
                             self.ma_cross = MarketAnalyzer.moving_average_cross(self.price_closes, 5, 10)
 
                         signal = self.indicator.get_signal_detail().direction
-                        confidence = self._calculate_confidence(signal) if signal != TradeSignal.NEUTRAL else 0
+                        confidence = self._apply_martingale_confidence(
+                            self._calculate_confidence(signal)
+                        ) if signal != TradeSignal.NEUTRAL else 0
                         self.latest_confidence = confidence
                         self.update_confidence_display(confidence)
                         if self.signal_callback:
@@ -774,25 +998,9 @@ class DerivBot:
                     self.log_message(f"Server error: {data['error']['message']}", "ERROR")
 
                 elif 'portfolio' in data:
-                    positions = []
-                    for contract in data['portfolio'].get('contracts', []):
-                        pos = {
-                            'contract_id': contract['contract_id'],
-                            'buy_price': float(contract['buy_price']),
-                            'sell_price': float(contract.get('sell_price', 0)),
-                            'current_price': float(contract.get('current_price', 0)),
-                            'payout': float(contract.get('payout', 0)),
-                            'profit_loss': float(contract.get('profit_loss', 0)),
-                            'contract_type': contract.get('contract_type', ''),
-                            'status': contract.get('status', 'open'),
-                            'expiry_time': contract.get('expiry_time', 0),
-                            'entry_tick': contract.get('entry_tick', 0),
-                            'entry_time': contract.get('entry_time', 0),
-                        }
-                        positions.append(pos)
-                    self.open_positions = positions
-                    if self.positions_callback:
-                        self.positions_callback(positions)
+                    self._publish_positions(
+                        self._normalize_portfolio_contracts(data['portfolio'].get('contracts', []))
+                    )
 
         except asyncio.CancelledError:
             self._fail_pending(asyncio.CancelledError())
@@ -894,6 +1102,14 @@ class DerivBot:
         trade_id = buy['buy']['contract_id']
         self.log_message(f"Trade opened: {signal} {trade_id}")
         self.last_trade_time = time.time()
+        self._remember_open_position(
+            trade_id,
+            contract_type,
+            self._safe_float(buy.get('buy', {}).get('buy_price', stake), stake),
+            self._safe_float(buy.get('buy', {}).get('payout', prop.get('proposal', {}).get('payout', 0))),
+        )
+        with contextlib.suppress(Exception):
+            await self.get_open_positions(subscribe=True)
 
         # --- Play beep sound ---
         try:
@@ -928,6 +1144,9 @@ class DerivBot:
                         buy_price = float(txn.get('buy_price', stake) or stake)
                         profit_value = txn.get('profit_loss')
                         profit = self._resolve_profit_loss(buy_price, sell_price, profit_value)
+                        if sell_price <= 0 and (buy_price or profit):
+                            sell_price = max(0.0, buy_price + profit)
+                        self._record_trade_result(trade_id, contract_type, buy_price, sell_price, profit)
                         found = True
 
                         if found:
@@ -944,10 +1163,14 @@ class DerivBot:
                 sell_price = float(contract.get('sell_price', 0))
                 buy_price = float(contract.get('buy_price', stake) or stake)
                 profit = self._resolve_profit_loss(buy_price, sell_price, contract.get('profit_loss'))
+                if sell_price <= 0 and (buy_price or profit):
+                    sell_price = max(0.0, buy_price + profit)
+                self._record_trade_result(trade_id, contract_type, buy_price, sell_price, profit)
                 self.log_message(f"Trade result from portfolio (fallback): {signal} {trade_id} profit={profit:.2f}")
             else:
                 self.log_message(f"Could not retrieve profit for {trade_id}, assuming loss", "ERROR")
                 profit = -stake
+                self._record_trade_result(trade_id, contract_type, stake, 0.0, profit)
 
         self.daily_pnl += profit
         self.log_message(f"Daily P&L: {self.daily_pnl:.2f}")
@@ -967,10 +1190,12 @@ class DerivBot:
                 self.update_stake(self.current_stake, self.consecutive)
             # Refresh trade history in the UI once
             asyncio.create_task(self.refresh_trade_history_once())
-            await self._send({"portfolio": 1, "subscribe": 1})
+            await self.get_open_positions(subscribe=True)
             return
 
         self._update_martingale_after_trade(profit)
+        self.latest_confidence = self._martingale_confidence()
+        self.update_confidence_display(self.latest_confidence)
 
         if self.update_stake:
             self.update_stake(self.current_stake, self.consecutive)
@@ -978,12 +1203,14 @@ class DerivBot:
         # Refresh trade history in the UI once
         asyncio.create_task(self.refresh_trade_history_once())
 
-        await self._send({"portfolio": 1, "subscribe": 1})
+        await self.get_open_positions(subscribe=True)
 
-    async def get_open_positions(self):
-        resp = await self._send({"portfolio": 1, "subscribe": 1})
+    async def get_open_positions(self, subscribe: bool = True):
+        resp = await self._send({"portfolio": 1, "subscribe": 1 if subscribe else 0})
         if 'portfolio' in resp:
-            return resp['portfolio'].get('contracts', [])
+            positions = self._normalize_portfolio_contracts(resp['portfolio'].get('contracts', []))
+            self._publish_positions(positions)
+            return positions
         return []
 
     async def close_position(self, contract_id: int):
@@ -992,41 +1219,25 @@ class DerivBot:
             self.log_message(f"Close error for {contract_id}: {sell['error']['message']}", "ERROR")
             return False
         self.log_message(f"Position {contract_id} closed successfully")
-        await self._send({"portfolio": 1, "subscribe": 1})
+        await self.get_open_positions(subscribe=True)
+        await self.refresh_trade_history_once()
         return True
 
     async def get_trade_history(self, limit=50):
-        """Retrieve contract-style history that looks closer to Deriv's website report."""
-        statement_resp = await self._send({
-            "statement": 1,
-            "limit": max(limit * 4, 100),
-            "description": 1
-        })
-        if 'statement' in statement_resp and 'transactions' in statement_resp['statement']:
-            rows = self._build_trade_history_from_statement(
-                statement_resp['statement']['transactions'],
-                limit
-            )
-            if rows:
-                if self.trade_history_callback:
-                    self.trade_history_callback(rows)
-                return rows
-            self.log_message("Statement history returned no contracts, falling back to profit_table", "WARN")
-        elif 'error' in statement_resp:
-            self.log_message(f"Statement history error: {statement_resp['error']['message']}", "WARN")
-
+        """Retrieve contract-style history, preferring settled profit_table results."""
         resp = await self._send({"profit_table": 1, "limit": limit})
         if 'error' in resp:
-            self.log_message(f"Profit table error: {resp['error']['message']}", "ERROR")
-            return []
-        if 'profit_table' in resp and 'transactions' in resp['profit_table']:
+            self.log_message(f"Profit table error: {resp['error']['message']}", "WARN")
+        elif 'profit_table' in resp and resp['profit_table'].get('transactions'):
             rows = []
             for txn in resp['profit_table']['transactions']:
                 contract_id = txn.get('contract_id')
                 contract_type = txn.get('contract_type')
                 buy_price, sell_price, payout = self._extract_trade_amounts(txn)
                 profit_loss = self._resolve_history_profit_loss(txn)
-                display_sell_price = sell_price if sell_price > 0 else payout
+                display_sell_price = sell_price
+                if display_sell_price <= 0 and (buy_price or profit_loss):
+                    display_sell_price = max(0.0, buy_price + profit_loss)
                 rows.append({
                     'type': contract_type or '',
                     'contract_type': contract_type or '',
@@ -1045,14 +1256,38 @@ class DerivBot:
                     'profit_loss': profit_loss,
                     '_sort_ts': int(self._safe_float(txn.get('end_time', txn.get('start_time', 0)), 0)),
                 })
-            rows.sort(key=lambda row: row.get('_sort_ts', 0), reverse=True)
+            rows = self._apply_cached_trade_results(rows)
+            rows = rows[:limit]
+            self._write_trade_history_report(rows)
             if self.trade_history_callback:
                 self.trade_history_callback(rows)
             return rows
-        else:
-            if self.trade_history_callback:
-                self.trade_history_callback([])
-            return []
+
+        statement_resp = await self._send({
+            "statement": 1,
+            "limit": max(limit * 4, 100),
+            "description": 1
+        })
+        if 'statement' in statement_resp and 'transactions' in statement_resp['statement']:
+            rows = self._build_trade_history_from_statement(
+                statement_resp['statement']['transactions'],
+                limit
+            )
+            if rows:
+                rows = self._apply_cached_trade_results(rows)[:limit]
+                self._write_trade_history_report(rows)
+                if self.trade_history_callback:
+                    self.trade_history_callback(rows)
+                return rows
+            self.log_message("Statement history returned no contracts, falling back to profit_table", "WARN")
+        elif 'error' in statement_resp:
+            self.log_message(f"Statement history error: {statement_resp['error']['message']}", "WARN")
+
+        rows = self._apply_cached_trade_results([])[:limit]
+        self._write_trade_history_report(rows)
+        if self.trade_history_callback:
+            self.trade_history_callback(rows)
+        return rows
 
     async def manual_trade_generic(self, contract_type: str, stake: float, duration_value: int, duration_unit: str, barrier: str = None):
         proposal_msg = {
@@ -1081,6 +1316,12 @@ class DerivBot:
                 return
             trade_id = buy['buy']['contract_id']
             self.log_message(f"Manual trade opened: {trade_id}")
+            self._remember_open_position(
+                trade_id,
+                contract_type,
+                self._safe_float(buy.get('buy', {}).get('buy_price', stake), stake),
+                self._safe_float(buy.get('buy', {}).get('payout', prop.get('proposal', {}).get('payout', 0))),
+            )
             
             # --- Play beep sound for manual trade as well ---
             try:
@@ -1092,7 +1333,8 @@ class DerivBot:
             except Exception:
                 pass
 
-            await self._send({"portfolio": 1, "subscribe": 1})
+            with contextlib.suppress(Exception):
+                await self.get_open_positions(subscribe=True)
 
             # Schedule a refresh of trade history after 10 seconds (to let the trade settle)
             asyncio.create_task(self._delayed_refresh(10))
@@ -1129,7 +1371,7 @@ class DerivBot:
                 if self.update_balance:
                     self.update_balance(self.balance, self.account_currency)
 
-            await self._send({"portfolio": 1, "subscribe": 1})
+            await self.get_open_positions(subscribe=True)
 
             if self.config.selected_strategy in ["Over 1-3", "Under 6-8", "Even", "Odd"]:
                 tick_sub = await self._send({"ticks": self.config.symbol, "subscribe": 1})
@@ -1201,7 +1443,7 @@ class DerivBot:
                     if self.update_balance:
                         self.update_balance(self.balance, self.account_currency)
 
-                await self._send({"portfolio": 1, "subscribe": 1})
+                await self.get_open_positions(subscribe=True)
 
                 if self.config.selected_strategy in ["Over 1-3", "Under 6-8", "Even", "Odd"]:
                     tick_sub = await self._send({"ticks": self.config.symbol, "subscribe": 1})

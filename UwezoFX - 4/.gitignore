@@ -1,0 +1,21 @@
+# Build outputs
+dist/
+build/
+installer_output/
+*.exe
+*.ico
+*.jpg
+*.png
+*.log
+*.spec
+
+# Runtime data
+logs/
+cache/
+profile_photos/
+__pycache__/
+*.pyc
+
+# Sensitive files
+.env
+broker_credentials.dat

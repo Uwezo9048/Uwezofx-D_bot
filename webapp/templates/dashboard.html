@@ -29,7 +29,8 @@
             <div class="settings-grid">
                 <label class="field-row field-row-wide">
                     <span>API Token</span>
-                    <input type="password" name="token" placeholder="Enter Deriv API token">
+                    <input id="api-token-input" type="password" name="token" placeholder="{{ 'Saved for this session' if state.token_saved else 'Enter Deriv API token' }}" autocomplete="off">
+                    <small id="token-status" class="field-hint">{{ 'Token saved until logout or timeout.' if state.token_saved else 'Enter once, then it stays active for this login session.' }}</small>
                 </label>
                 <label class="field-row">
                     <span>App ID</span>
@@ -230,12 +231,8 @@
                             <table>
                                 <thead>
                                     <tr>
-                                        <th>Type</th>
-                                        <th>Ref. ID</th>
                                         <th>Currency</th>
-                                        <th>Buy time</th>
                                         <th>Stake</th>
-                                        <th>Sell time</th>
                                         <th>Contract</th>
                                         <th>Profit/Loss</th>
                                     </tr>
@@ -243,17 +240,13 @@
                                 <tbody id="history-body">
                                     {% for row in state.history %}
                                     <tr>
-                                        <td>{{ row.type }}</td>
-                                        <td>{{ row.ref_id }}</td>
                                         <td>{{ row.currency }}</td>
-                                        <td>{{ row.buy_time }}</td>
                                         <td>{{ row.stake }}</td>
-                                        <td>{{ row.sell_time }}</td>
                                         <td>{{ row.contract }}</td>
                                         <td class="{{ 'profit' if '+' in row.profit_loss else 'loss' if '-' in row.profit_loss else '' }}">{{ row.profit_loss }}</td>
                                     </tr>
                                     {% else %}
-                                    <tr><td colspan="8" class="empty-state">No trade history yet.</td></tr>
+                                    <tr><td colspan="4" class="empty-state">No trade history yet.</td></tr>
                                     {% endfor %}
                                 </tbody>
                             </table>
@@ -337,18 +330,14 @@
     function renderHistory(rows) {
         const body = document.getElementById("history-body");
         if (!rows.length) {
-            body.innerHTML = '<tr><td colspan="8" class="empty-state">No trade history yet.</td></tr>';
+            body.innerHTML = '<tr><td colspan="4" class="empty-state">No trade history yet.</td></tr>';
             return;
         }
 
         body.innerHTML = rows.map((row) => `
             <tr>
-                <td>${escapeHtml(row.type)}</td>
-                <td>${escapeHtml(row.ref_id)}</td>
                 <td>${escapeHtml(row.currency)}</td>
-                <td>${escapeHtml(row.buy_time)}</td>
                 <td>${escapeHtml(row.stake)}</td>
-                <td>${escapeHtml(row.sell_time)}</td>
                 <td>${escapeHtml(row.contract)}</td>
                 <td class="${row.profit_loss.includes('+') ? 'profit' : row.profit_loss.includes('-') ? 'loss' : ''}">${escapeHtml(row.profit_loss)}</td>
             </tr>
@@ -373,6 +362,42 @@
         }
         box.innerHTML = rows.map((entry) => `<p>${escapeHtml(entry)}</p>`).join("");
         box.scrollTop = box.scrollHeight;
+    }
+
+    function applyDashboardData(data) {
+        document.getElementById("metric-balance").textContent = data.metrics.balance;
+        document.getElementById("metric-stake").textContent = data.metrics.stake;
+        document.getElementById("metric-signal").textContent = data.metrics.signal;
+        document.getElementById("metric-confidence").textContent = data.metrics.confidence;
+        document.getElementById("metric-running").textContent = data.running ? "Running" : "Stopped";
+        const tokenInput = document.getElementById("api-token-input");
+        const tokenStatus = document.getElementById("token-status");
+        if (tokenInput && tokenStatus && data.token_saved) {
+            tokenInput.placeholder = "Saved for this session";
+            tokenStatus.textContent = "Token saved until logout or timeout.";
+        }
+
+        const historyTotal = document.getElementById("history-total");
+        historyTotal.textContent = `Net Profit/Loss: ${data.history_total}`;
+        historyTotal.className = data.history_total.includes("+") ? "profit" : data.history_total.includes("-") ? "loss" : "";
+
+        renderPositions(data.positions);
+        renderHistory(data.history);
+        renderDigits(data.digits);
+        renderLogs(data.logs);
+    }
+
+    function showFlash(message, category = "success") {
+        let stack = document.querySelector(".flash-stack");
+        if (!stack) {
+            stack = document.createElement("div");
+            stack.className = "flash-stack";
+            document.querySelector(".page-shell").prepend(stack);
+        }
+        stack.innerHTML = `<div class="flash flash-${escapeHtml(category)}">${escapeHtml(message)}</div>`;
+        setTimeout(() => {
+            stack.innerHTML = "";
+        }, 3500);
     }
 
     function setupDashboardTabs() {
@@ -418,6 +443,56 @@
         resetTimer();
     }
 
+    function setupAsyncActions() {
+        const asyncActions = new Set([
+            "{{ url_for('start_bot') }}",
+            "{{ url_for('stop_bot') }}",
+            "{{ url_for('reset_martingale') }}",
+            "{{ url_for('set_mode') }}",
+            "{{ url_for('manual_trade') }}",
+            "{{ url_for('close_position') }}",
+            "{{ url_for('refresh_bot_data') }}",
+        ]);
+
+        document.addEventListener("submit", async (event) => {
+            const form = event.target;
+            const submitter = event.submitter;
+            const action = submitter?.getAttribute("formaction") || form.getAttribute("action");
+            if (!asyncActions.has(action)) {
+                return;
+            }
+
+            event.preventDefault();
+            const formData = new FormData(form);
+            const apiToken = document.getElementById("api-token-input")?.value.trim();
+            if (apiToken && !formData.get("token")) {
+                formData.set("token", apiToken);
+            }
+            if (submitter?.name) {
+                formData.set(submitter.name, submitter.value);
+            }
+            submitter?.setAttribute("disabled", "disabled");
+
+            try {
+                const response = await fetch(action, {
+                    method: "POST",
+                    body: formData,
+                    headers: {"X-Requested-With": "fetch"},
+                });
+                const data = await response.json();
+                if (data.metrics) {
+                    applyDashboardData(data);
+                }
+                showFlash(data.message || "Action complete.", response.ok ? "success" : "error");
+            } catch (error) {
+                console.error("Dashboard action failed", error);
+                showFlash("Action failed. Please try again.", "error");
+            } finally {
+                submitter?.removeAttribute("disabled");
+            }
+        });
+    }
+
     async function refreshDashboard() {
         try {
             const response = await fetch("{{ url_for('api_status') }}", { cache: "no-store" });
@@ -429,20 +504,7 @@
             }
 
             const data = await response.json();
-            document.getElementById("metric-balance").textContent = data.metrics.balance;
-            document.getElementById("metric-stake").textContent = data.metrics.stake;
-            document.getElementById("metric-signal").textContent = data.metrics.signal;
-            document.getElementById("metric-confidence").textContent = data.metrics.confidence;
-            document.getElementById("metric-running").textContent = data.running ? "Running" : "Stopped";
-
-            const historyTotal = document.getElementById("history-total");
-            historyTotal.textContent = `Net Profit/Loss: ${data.history_total}`;
-            historyTotal.className = data.history_total.includes("+") ? "profit" : data.history_total.includes("-") ? "loss" : "";
-
-            renderPositions(data.positions);
-            renderHistory(data.history);
-            renderDigits(data.digits);
-            renderLogs(data.logs);
+            applyDashboardData(data);
         } catch (error) {
             console.error("Dashboard refresh failed", error);
         }
@@ -450,6 +512,7 @@
 
     setupDashboardTabs();
     setupIdleLogout();
+    setupAsyncActions();
     setInterval(refreshDashboard, 4000);
 </script>
 {% endblock %}

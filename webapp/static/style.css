@@ -1,17 +1,17 @@
 :root {
-    --bg-dark: #0b0f1a;
-    --bg-card: #1a233a;
-    --bg-sidebar: #111b2e;
-    --text-primary: #ffffff;
-    --text-secondary: #a0b4d9;
-    --text-muted: #6b7fa3;
-    --accent-primary: #6c63ff;
-    --accent-success: #00d9a5;
-    --accent-danger: #ff5e7d;
-    --accent-warning: #ffb443;
-    --accent-info: #3fa2f7;
-    --border: #2e3f66;
-    --table-head: #31456f;
+    --bg-dark: #05070b;
+    --bg-card: #101722;
+    --bg-sidebar: #0b111a;
+    --text-primary: #f6f8fb;
+    --text-secondary: #b8c2d6;
+    --text-muted: #77849a;
+    --accent-primary: #00e0a4;
+    --accent-success: #13d67f;
+    --accent-danger: #ff4d67;
+    --accent-warning: #f5b84b;
+    --accent-info: #38bdf8;
+    --border: #263244;
+    --table-head: #f3f5f8;
 }
 
 * {
@@ -23,8 +23,8 @@ body {
     min-height: 100dvh;
     color: var(--text-primary);
     background:
-        radial-gradient(circle at top right, rgba(108, 99, 255, 0.18), transparent 28%),
-        radial-gradient(circle at bottom left, rgba(0, 217, 165, 0.12), transparent 24%),
+        linear-gradient(145deg, rgba(0, 224, 164, 0.10), transparent 32%),
+        linear-gradient(315deg, rgba(245, 184, 75, 0.09), transparent 28%),
         var(--bg-dark);
     font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
 }
@@ -44,10 +44,10 @@ a {
 }
 
 .card {
-    background: rgba(26, 35, 58, 0.96);
+    background: rgba(16, 23, 34, 0.96);
     border: 1px solid var(--border);
-    border-radius: 14px;
-    box-shadow: 0 14px 28px rgba(0, 0, 0, 0.22);
+    border-radius: 8px;
+    box-shadow: 0 18px 34px rgba(0, 0, 0, 0.28);
 }
 
 .auth-wrap {
@@ -71,7 +71,7 @@ a {
     color: var(--accent-primary);
     font-size: 2rem;
     font-weight: 800;
-    letter-spacing: 0.08em;
+    letter-spacing: 0.03em;
 }
 
 .brand-mark-small {
@@ -122,12 +122,19 @@ label span {
     font-size: 0.82rem;
 }
 
+.field-hint {
+    display: block;
+    margin-top: 6px;
+    color: var(--text-muted);
+    font-size: 0.76rem;
+}
+
 input,
 select {
     width: 100%;
     padding: 10px 12px;
     border: 1px solid var(--border);
-    border-radius: 10px;
+    border-radius: 8px;
     background: var(--bg-sidebar);
     color: var(--text-primary);
     outline: none;
@@ -153,7 +160,7 @@ select:focus {
     min-height: 40px;
     padding: 0 14px;
     border: 0;
-    border-radius: 10px;
+    border-radius: 8px;
     color: white;
     cursor: pointer;
     font-weight: 700;
@@ -166,11 +173,11 @@ select:focus {
     font-size: 0.78rem;
 }
 
-.btn-primary { background: linear-gradient(135deg, #6c63ff, #4a42d9); }
-.btn-success { background: linear-gradient(135deg, #00d9a5, #00b38a); }
-.btn-danger { background: linear-gradient(135deg, #ff5e7d, #e64a6b); }
-.btn-warning { background: linear-gradient(135deg, #ffb443, #e69a30); }
-.btn-info { background: linear-gradient(135deg, #3fa2f7, #2e8ce0); }
+.btn-primary { background: linear-gradient(135deg, #00e0a4, #00b987); }
+.btn-success { background: linear-gradient(135deg, #13d67f, #0fb169); }
+.btn-danger { background: linear-gradient(135deg, #ff4d67, #d93a52); }
+.btn-warning { background: linear-gradient(135deg, #f5b84b, #d89828); color: #111827; }
+.btn-info { background: linear-gradient(135deg, #38bdf8, #1593d1); }
 .btn-ghost {
     background: transparent;
     border: 1px solid var(--border);
@@ -205,9 +212,9 @@ select:focus {
     gap: 16px;
     margin-bottom: 10px;
     padding: 12px 16px;
-    background: rgba(26, 35, 58, 0.92);
+    background: rgba(16, 23, 34, 0.94);
     border: 1px solid var(--border);
-    border-radius: 14px;
+    border-radius: 8px;
 }
 
 .topbar-brand {
@@ -350,7 +357,7 @@ select:focus {
 
 .status-pill {
     padding: 8px 10px;
-    border-radius: 999px;
+    border-radius: 8px;
     background: var(--bg-sidebar);
     border: 1px solid var(--border);
     font-size: 0.82rem;
@@ -416,8 +423,8 @@ select:focus {
 .nav-panel-card {
     margin: 8px;
     min-height: 560px;
-    border-radius: 0 0 12px 12px;
-    background: #1d2745;
+    border-radius: 0 0 8px 8px;
+    background: #151f2e;
     display: flex;
     flex-direction: column;
 }
@@ -451,7 +458,7 @@ select:focus {
     overflow-x: auto;
     scrollbar-gutter: stable;
     border: 1px solid rgba(46, 63, 102, 0.65);
-    border-radius: 10px;
+    border-radius: 8px;
 }
 
 table {
@@ -472,7 +479,7 @@ tbody td {
     padding: 10px 10px;
     border-bottom: 1px solid rgba(46, 63, 102, 0.6);
     color: #d8e1ff;
-    background: rgba(17, 26, 46, 0.72);
+    background: rgba(11, 17, 26, 0.74);
     font-size: 0.82rem;
 }
 
@@ -492,7 +499,7 @@ tbody td {
 
 .digit-card {
     padding: 8px;
-    border-radius: 12px;
+    border-radius: 8px;
     border: 1px solid var(--border);
     background: rgba(17, 27, 46, 0.9);
     text-align: center;
