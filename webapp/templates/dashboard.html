@@ -5,6 +5,13 @@
     <div class="topbar-brand">
         <img src="{{ url_for('static', filename='images/icon.png') }}" alt="UWEZO-FX logo" class="topbar-logo">
         <div class="brand-mark brand-mark-small">UWEZO-FX DERIV BOT</div>
+        <form class="timeout-form" method="post" action="{{ url_for('set_dashboard_timeout') }}">
+            <label class="timeout-field">
+                <span>Timeout</span>
+                <input id="timeout-minutes-input" type="number" name="timeout_minutes" min="1" max="1440" value="{{ state.config.timeout_minutes }}">
+            </label>
+            <button class="btn btn-info btn-small" type="submit">Save</button>
+        </form>
     </div>
     <div class="topbar-actions">
         <div class="topbar-status">
@@ -16,7 +23,7 @@
                 Bot: <span id="metric-running">{{ "Running" if state.running else "Stopped" }}</span>
             </div>
         </div>
-        <a class="btn btn-danger" href="{{ url_for('logout') }}">Logout</a>
+        <a id="logout-link" class="btn btn-danger" href="{{ url_for('logout') }}">Logout</a>
         <div class="welcome">Welcome, {{ user.username }}</div>
     </div>
 </header>
@@ -31,6 +38,13 @@
                     <span>API Token</span>
                     <input id="api-token-input" type="password" name="token" placeholder="{{ 'Saved for this session' if state.token_saved else 'Enter Deriv API token' }}" autocomplete="off">
                     <small id="token-status" class="field-hint">{{ 'Token saved until logout or timeout.' if state.token_saved else 'Enter once, then it stays active for this login session.' }}</small>
+                </label>
+                <label class="field-row field-row-wide">
+                    <span>Previously Used Token</span>
+                    <select id="token-cache-select">
+                        <option value="">Choose a saved token</option>
+                    </select>
+                    <small class="field-hint">Saved in this browser for quick reuse.</small>
                 </label>
                 <label class="field-row">
                     <span>App ID</span>
@@ -376,6 +390,10 @@
             tokenInput.placeholder = "Saved for this session";
             tokenStatus.textContent = "Token saved until logout or timeout.";
         }
+        const timeoutInput = document.getElementById("timeout-minutes-input");
+        if (timeoutInput && data.config?.timeout_minutes) {
+            timeoutInput.value = data.config.timeout_minutes;
+        }
 
         const historyTotal = document.getElementById("history-total");
         historyTotal.textContent = `Net Profit/Loss: ${data.history_total}`;
@@ -423,8 +441,14 @@
         });
     }
 
+    function getTimeoutMs() {
+        const timeoutInput = document.getElementById("timeout-minutes-input");
+        const timeoutMinutes = Number.parseInt(timeoutInput?.value || "{{ state.config.timeout_minutes }}", 10);
+        const safeTimeoutMinutes = Number.isFinite(timeoutMinutes) ? Math.min(Math.max(timeoutMinutes, 1), 1440) : 5;
+        return safeTimeoutMinutes * 60 * 1000;
+    }
+
     function setupIdleLogout() {
-        const idleMs = 5 * 60 * 1000; // 5 minutes
         let timer = null;
 
         const resetTimer = () => {
@@ -432,8 +456,9 @@
                 clearTimeout(timer);
             }
             timer = setTimeout(() => {
+                sessionStorage.removeItem("uwezoCurrentApiToken");
                 window.location.href = "{{ url_for('logout') }}";
-            }, idleMs);
+            }, getTimeoutMs());
         };
 
         ["mousemove", "mousedown", "keydown", "scroll", "touchstart", "click"].forEach((eventName) => {
@@ -449,6 +474,7 @@
             "{{ url_for('stop_bot') }}",
             "{{ url_for('reset_martingale') }}",
             "{{ url_for('set_mode') }}",
+            "{{ url_for('set_dashboard_timeout') }}",
             "{{ url_for('manual_trade') }}",
             "{{ url_for('close_position') }}",
             "{{ url_for('refresh_bot_data') }}",
@@ -467,6 +493,10 @@
             const apiToken = document.getElementById("api-token-input")?.value.trim();
             if (apiToken && !formData.get("token")) {
                 formData.set("token", apiToken);
+            }
+            if (apiToken) {
+                rememberCurrentToken(apiToken);
+                cacheToken(apiToken);
             }
             if (submitter?.name) {
                 formData.set(submitter.name, submitter.value);
@@ -493,6 +523,105 @@
         });
     }
 
+    function maskToken(token) {
+        if (!token) {
+            return "";
+        }
+        if (token.length <= 8) {
+            return "*".repeat(token.length);
+        }
+        return `${token.slice(0, 4)}...${token.slice(-4)}`;
+    }
+
+    function getCachedTokens() {
+        try {
+            const cachedTokens = JSON.parse(localStorage.getItem("uwezoApiTokenCache") || "[]");
+            return Array.isArray(cachedTokens) ? cachedTokens.filter(Boolean) : [];
+        } catch (error) {
+            return [];
+        }
+    }
+
+    function renderTokenCache() {
+        const select = document.getElementById("token-cache-select");
+        if (!select) {
+            return;
+        }
+        const cachedTokens = getCachedTokens();
+        select.innerHTML = '<option value="">Choose a saved token</option>';
+        cachedTokens.forEach((token) => {
+            const option = document.createElement("option");
+            option.value = token;
+            option.textContent = maskToken(token);
+            select.append(option);
+        });
+    }
+
+    function cacheToken(token) {
+        const cachedTokens = getCachedTokens().filter((item) => item !== token);
+        cachedTokens.unshift(token);
+        try {
+            localStorage.setItem("uwezoApiTokenCache", JSON.stringify(cachedTokens.slice(0, 8)));
+        } catch (error) {
+            return;
+        }
+        renderTokenCache();
+    }
+
+    function rememberCurrentToken(token) {
+        if (token) {
+            try {
+                sessionStorage.setItem("uwezoCurrentApiToken", token);
+            } catch (error) {
+                return;
+            }
+        }
+    }
+
+    function setupTokenMemory() {
+        const tokenInput = document.getElementById("api-token-input");
+        const tokenSelect = document.getElementById("token-cache-select");
+        let savedToken = "";
+        try {
+            savedToken = sessionStorage.getItem("uwezoCurrentApiToken") || "";
+        } catch (error) {
+            savedToken = "";
+        }
+        renderTokenCache();
+
+        if (tokenInput && savedToken && !tokenInput.value) {
+            tokenInput.value = savedToken;
+        }
+
+        tokenInput?.addEventListener("input", () => {
+            const token = tokenInput.value.trim();
+            if (token) {
+                rememberCurrentToken(token);
+            } else {
+                sessionStorage.removeItem("uwezoCurrentApiToken");
+            }
+        });
+
+        tokenInput?.addEventListener("blur", () => {
+            const token = tokenInput.value.trim();
+            if (token) {
+                cacheToken(token);
+            }
+        });
+
+        tokenSelect?.addEventListener("change", () => {
+            if (tokenSelect.value && tokenInput) {
+                tokenInput.value = tokenSelect.value;
+                rememberCurrentToken(tokenSelect.value);
+                tokenSelect.value = "";
+            }
+        });
+
+        document.getElementById("logout-link")?.addEventListener("click", () => {
+            sessionStorage.removeItem("uwezoCurrentApiToken");
+        });
+    }
+
     async function refreshDashboard() {
         try {
             const response = await fetch("{{ url_for('api_status') }}", { cache: "no-store" });
@@ -511,6 +640,7 @@
     }
 
     setupDashboardTabs();
+    setupTokenMemory();
     setupIdleLogout();
     setupAsyncActions();
     setInterval(refreshDashboard, 4000);

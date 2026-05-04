@@ -111,6 +111,7 @@ class WebBotManager:
                 "manual_contract": "Rise/Fall",
                 "manual_stake": "5",
                 "manual_duration": "1",
+                "timeout_minutes": "5",
             },
             "session_token": "",
             "metrics": {
@@ -430,6 +431,18 @@ class WebBotManager:
             self._append_log(f"Mode changed to: {mode}")
         return True, f"Mode set to {mode}."
 
+    def set_timeout(self, timeout_minutes):
+        try:
+            timeout_value = int(str(timeout_minutes).strip())
+        except (TypeError, ValueError):
+            return False, "Timeout must be a whole number of minutes."
+        if timeout_value < 1 or timeout_value > 1440:
+            return False, "Timeout must be between 1 and 1440 minutes."
+        with self.lock:
+            self.state["config"]["timeout_minutes"] = str(timeout_value)
+            self._touch()
+        return True, f"Timeout set to {timeout_value} minute{'s' if timeout_value != 1 else ''}."
+
     def close_position(self, contract_id):
         if not self.bot:
             return False, "Bot is not running."
@@ -702,6 +715,24 @@ def set_mode():
         return redirect(url_for("login"))
     mode = request.form.get("mode", "Monitor")
     success, message = manager.set_mode(mode)
+    if request.headers.get("X-Requested-With") == "fetch":
+        payload = manager.snapshot()
+        payload.update({"success": success, "message": message})
+        return jsonify(payload), 200 if success else 400
+    flash(message, "success" if success else "error")
+    return redirect(url_for("dashboard"))
+
+
+@app.route("/dashboard/timeout", methods=["POST"])
+@login_required
+def set_dashboard_timeout():
+    manager = current_manager()
+    if not manager:
+        if request.headers.get("X-Requested-With") == "fetch":
+            return jsonify({"success": False, "message": "Please log in first."}), 401
+        flash("Please log in first.", "error")
+        return redirect(url_for("login"))
+    success, message = manager.set_timeout(request.form.get("timeout_minutes", "5"))
     if request.headers.get("X-Requested-With") == "fetch":
         payload = manager.snapshot()
         payload.update({"success": success, "message": message})
