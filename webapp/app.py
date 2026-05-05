@@ -809,13 +809,7 @@ def dashboard():
 @app.route("/deriv/connect")
 @login_required
 def deriv_connect():
-    state = secrets.token_urlsafe(24)
-    session["deriv_oauth_state"] = state
-    params = {
-        "app_id": str(Settings.DERIV_APP_ID),
-        "redirect_uri": deriv_callback_url(),
-        "state": state,
-    }
+    params = {"app_id": str(Settings.DERIV_APP_ID)}
     return redirect(f"https://oauth.deriv.com/oauth2/authorize?{urlencode(params)}")
 
 
