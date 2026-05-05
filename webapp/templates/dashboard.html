@@ -41,8 +41,15 @@
                 </label>
                 <div class="field-row field-row-wide deriv-link-panel">
                     <div>
+                        <span>Simple Token Connect</span>
+                        <small class="field-hint">Paste a Deriv token above, then let the bot verify and link it.</small>
+                    </div>
+                    <button class="btn btn-primary" type="submit" formaction="{{ url_for('deriv_connect_token') }}">Connect Token</button>
+                </div>
+                <div class="field-row field-row-wide deriv-link-panel">
+                    <div>
                         <span>Deriv Browser Link</span>
-                        <small class="field-hint">Sign in on Deriv and return with a linked session token.</small>
+                        <small class="field-hint">Optional OAuth flow. Use this only after your Deriv callback URL is configured.</small>
                         <small class="field-hint">Callback: {{ deriv_callback_url }}</small>
                     </div>
                     <a class="btn btn-info" href="{{ url_for('deriv_connect') }}" target="_blank" rel="noopener">Link Deriv Account</a>
@@ -563,6 +570,7 @@
             "{{ url_for('reset_martingale') }}",
             "{{ url_for('set_mode') }}",
             "{{ url_for('set_dashboard_timeout') }}",
+            "{{ url_for('deriv_connect_token') }}",
             "{{ url_for('manual_trade') }}",
             "{{ url_for('close_position') }}",
             "{{ url_for('refresh_bot_data') }}",

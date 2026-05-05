@@ -1,10 +1,12 @@
 import asyncio
 import contextlib
+import json
 import os
 import secrets
 import threading
 import time
 from collections import deque
+from datetime import timedelta
 from functools import wraps
 from pathlib import Path
 from urllib.parse import urlencode
@@ -22,11 +24,13 @@ if str(PROJECT_ROOT) not in sys.path:
 from config import BotConfig, Settings
 from modules.database.supabase_manager import SupabaseUserManager
 from modules.trading.bot import DerivBot
+import websockets
 
 
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY") or os.getenv("SECRET_KEY") or "dev-only-change-me"
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1)
+app.permanent_session_lifetime = timedelta(hours=12)
 
 
 TIMEFRAME_OPTIONS = {
@@ -323,6 +327,18 @@ class WebBotManager:
             self.state["session_token"] = self._token_for_selected_account_locked() or clean_accounts[0]["token"]
             self._touch()
 
+    def select_deriv_account(self, account_id):
+        account_id = (account_id or "").strip()
+        if not account_id:
+            return
+        with self.lock:
+            for account in self.state.get("deriv_accounts", []):
+                if account.get("account") == account_id:
+                    self.state["config"]["deriv_account"] = account_id
+                    self.state["session_token"] = account.get("token", "")
+                    self._touch()
+                    return
+
     def _token_for_selected_account_locked(self):
         selected_account = self.state["config"].get("deriv_account", "")
         for account in self.state.get("deriv_accounts", []):
@@ -597,6 +613,32 @@ def remember_deriv_accounts_for_session(accounts):
     return True
 
 
+def remember_pending_deriv_accounts(accounts):
+    pending_accounts = []
+    for account in accounts:
+        token = str(account.get("token", "")).strip()
+        account_id = str(account.get("account", "")).strip()
+        if token and account_id:
+            pending_accounts.append(
+                {
+                    "token": token,
+                    "account": account_id,
+                    "currency": str(account.get("currency", "")).strip(),
+                }
+            )
+    if pending_accounts:
+        session["pending_deriv_accounts"] = pending_accounts
+
+
+def attach_pending_deriv_accounts(user):
+    pending_accounts = session.pop("pending_deriv_accounts", None)
+    if not pending_accounts:
+        return False
+    manager = bot_hub.get_manager(user)
+    manager.remember_deriv_accounts(pending_accounts)
+    return True
+
+
 def handle_deriv_token_redirect():
     accounts = extract_deriv_accounts(request.args)
     if not accounts:
@@ -617,6 +659,31 @@ def deriv_callback_url():
     if configured_url:
         return configured_url
     return url_for("deriv_callback", _external=True)
+
+
+async def authorize_deriv_token(token, app_id):
+    url = f"wss://ws.derivws.com/websockets/v3?app_id={app_id}"
+    try:
+        async with websockets.connect(url, ping_interval=None, close_timeout=5) as ws:
+            await ws.send(json.dumps({"authorize": token}))
+            response = json.loads(await asyncio.wait_for(ws.recv(), timeout=15))
+    except Exception as exc:
+        return False, f"Could not reach Deriv authorization service: {exc}", None
+
+    if response.get("error"):
+        error = response["error"]
+        return False, error.get("message", "Deriv rejected this token."), None
+
+    authorized = response.get("authorize") or {}
+    account = authorized.get("loginid") or authorized.get("account") or ""
+    if not account:
+        return False, "Deriv authorized the token, but did not return an account id.", None
+
+    return True, "Deriv token connected.", {
+        "token": token,
+        "account": account,
+        "currency": authorized.get("currency", ""),
+    }
 
 
 def fetch_active_symbols(app_id):
@@ -678,9 +745,12 @@ def login():
             flash(message, "error")
             return render_template("login.html")
 
+        session.permanent = True
         session["user"] = user
-        bot_hub.get_manager(user)
-        flash("Login successful.", "success")
+        linked_deriv = attach_pending_deriv_accounts(user)
+        if not linked_deriv:
+            bot_hub.get_manager(user)
+        flash("Login successful. Deriv account linked." if linked_deriv else "Login successful.", "success")
         return redirect(url_for("dashboard"))
 
     return render_template("login.html")
@@ -750,29 +820,61 @@ def deriv_connect():
 
 
 @app.route("/deriv/callback")
-@login_required
 def deriv_callback():
     if request.args.get("error"):
         error_description = request.args.get("error_description") or request.args.get("error")
         flash(f"Deriv account linking failed: {error_description}", "error")
-        return redirect(url_for("dashboard"))
+        return redirect(url_for("dashboard") if session.get("user") else url_for("login"))
 
     expected_state = session.pop("deriv_oauth_state", "")
     returned_state = request.args.get("state", "")
     if expected_state and returned_state and expected_state != returned_state:
         flash("Deriv account linking failed. Please try again.", "error")
-        return redirect(url_for("dashboard"))
+        return redirect(url_for("dashboard") if session.get("user") else url_for("login"))
 
     accounts = extract_deriv_accounts(request.args)
 
     if not accounts:
         flash("No Deriv token was returned. You can still paste an API token manually.", "error")
+        return redirect(url_for("dashboard") if session.get("user") else url_for("login"))
+
+    if remember_deriv_accounts_for_session(accounts):
+        flash("Deriv account linked. Select Demo or Real from the bot settings before running.", "success")
         return redirect(url_for("dashboard"))
 
+    remember_pending_deriv_accounts(accounts)
+    flash("Deriv account received. Log in to your bot to finish linking.", "success")
+    return redirect(url_for("login"))
+
+
+@app.route("/deriv/connect-token", methods=["POST"])
+@login_required
+def deriv_connect_token():
     manager = current_manager()
-    if manager:
-        manager.remember_deriv_accounts(accounts)
-    flash("Deriv account linked. Select Demo or Real from the bot settings before running.", "success")
+    if not manager:
+        if request.headers.get("X-Requested-With") == "fetch":
+            return jsonify({"success": False, "message": "Please log in first."}), 401
+        flash("Please log in first.", "error")
+        return redirect(url_for("login"))
+
+    token = request.form.get("token", "").strip() or manager.get_session_token()
+    if not token:
+        message = "Paste a Deriv API token first, then click Connect Token."
+        if request.headers.get("X-Requested-With") == "fetch":
+            return jsonify({"success": False, "message": message}), 400
+        flash(message, "error")
+        return redirect(url_for("dashboard"))
+
+    success, message, account = asyncio.run(authorize_deriv_token(token, Settings.DERIV_APP_ID))
+    if success:
+        manager.remember_deriv_accounts([account])
+        manager.select_deriv_account(account["account"])
+
+    if request.headers.get("X-Requested-With") == "fetch":
+        payload = manager.snapshot()
+        payload.update({"success": success, "message": message})
+        return jsonify(payload), 200 if success else 400
+    flash(message, "success" if success else "error")
     return redirect(url_for("dashboard"))
 
 
