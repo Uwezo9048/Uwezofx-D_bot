@@ -43,13 +43,13 @@
                     <div>
                         <span>Deriv Browser Link</span>
                         <small class="field-hint">Sign in on Deriv and return with a linked session token.</small>
+                        <small class="field-hint">Callback: {{ deriv_callback_url }}</small>
                     </div>
                     <a class="btn btn-info" href="{{ url_for('deriv_connect') }}" target="_blank" rel="noopener">Link Deriv Account</a>
                 </div>
-                {% if state.deriv_accounts %}
-                <label class="field-row field-row-wide">
+                <label id="deriv-account-row" class="field-row field-row-wide {% if not state.deriv_accounts %}is-hidden{% endif %}">
                     <span>Linked Deriv Account</span>
-                    <select name="deriv_account">
+                    <select id="deriv-account-select" name="deriv_account">
                         {% for account in state.deriv_accounts %}
                         <option value="{{ account.account }}" {% if account.account == state.config.deriv_account %}selected{% endif %}>
                             {{ account.type }} - {{ account.account }}{% if account.currency %} ({{ account.currency }}){% endif %}
@@ -58,7 +58,6 @@
                     </select>
                     <small class="field-hint">Choose Demo or Real before starting the bot. Manual API token still works.</small>
                 </label>
-                {% endif %}
                 <label class="field-row field-row-wide">
                     <span>Previously Used Token</span>
                     <select id="token-cache-select">
@@ -438,6 +437,26 @@
         box.scrollTop = box.scrollHeight;
     }
 
+    function renderDerivAccounts(accounts = [], selectedAccount = "") {
+        const row = document.getElementById("deriv-account-row");
+        const select = document.getElementById("deriv-account-select");
+        if (!row || !select) {
+            return;
+        }
+        row.classList.toggle("is-hidden", !accounts.length);
+        if (!accounts.length || document.activeElement === select) {
+            return;
+        }
+        select.innerHTML = accounts.map((account) => {
+            const currency = account.currency ? ` (${escapeHtml(account.currency)})` : "";
+            return `
+                <option value="${escapeHtml(account.account)}" ${account.account === selectedAccount ? "selected" : ""}>
+                    ${escapeHtml(account.type)} - ${escapeHtml(account.account)}${currency}
+                </option>
+            `;
+        }).join("");
+    }
+
     function applyDashboardData(data) {
         const incomingPositionIds = new Set((data.positions || []).map((row) => String(row.id)).filter(Boolean));
         const hasNewPosition = [...incomingPositionIds].some((id) => !knownPositionIds.has(id));
@@ -466,6 +485,7 @@
         renderHistory(data.history);
         renderDigits(data.digits);
         renderLogs(data.logs);
+        renderDerivAccounts(data.deriv_accounts || [], data.config?.deriv_account || "");
 
         if (hasNewPosition) {
             playTradeBeep();

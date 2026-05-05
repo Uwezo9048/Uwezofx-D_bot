@@ -129,6 +129,10 @@ label span {
     font-size: 0.76rem;
 }
 
+.is-hidden {
+    display: none !important;
+}
+
 .deriv-link-panel {
     display: flex;
     align-items: center;

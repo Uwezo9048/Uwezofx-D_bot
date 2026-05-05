@@ -10,6 +10,7 @@ from pathlib import Path
 from urllib.parse import urlencode
 
 from flask import Flask, flash, jsonify, redirect, render_template, request, session, url_for
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 import sys
 
@@ -25,6 +26,7 @@ from modules.trading.bot import DerivBot
 
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY") or os.getenv("SECRET_KEY") or "dev-only-change-me"
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1)
 
 
 TIMEFRAME_OPTIONS = {
@@ -569,6 +571,54 @@ def current_manager():
     return bot_hub.get_manager(user)
 
 
+def extract_deriv_accounts(args):
+    accounts = []
+    for index in range(1, 20):
+        token = args.get(f"token{index}", "").strip()
+        if not token:
+            continue
+        accounts.append(
+            {
+                "token": token,
+                "account": args.get(f"acct{index}", "").strip(),
+                "currency": args.get(f"cur{index}", "").strip(),
+            }
+        )
+    return accounts
+
+
+def remember_deriv_accounts_for_session(accounts):
+    if not accounts:
+        return False
+    manager = current_manager()
+    if not manager:
+        return False
+    manager.remember_deriv_accounts(accounts)
+    return True
+
+
+def handle_deriv_token_redirect():
+    accounts = extract_deriv_accounts(request.args)
+    if not accounts:
+        return None
+    if remember_deriv_accounts_for_session(accounts):
+        flash("Deriv account linked. Select Demo or Real from the bot settings before running.", "success")
+        return redirect(url_for("dashboard"))
+    flash("Log in to your bot first, then click Link Deriv Account again.", "error")
+    return redirect(url_for("login"))
+
+
+def deriv_callback_url():
+    configured_url = (
+        os.getenv("DERIV_OAUTH_REDIRECT_URL")
+        or os.getenv("DERIV_CALLBACK_URL")
+        or ""
+    ).strip()
+    if configured_url:
+        return configured_url
+    return url_for("deriv_callback", _external=True)
+
+
 def fetch_active_symbols(app_id):
     import requests
 
@@ -601,6 +651,7 @@ def render_dashboard_page():
         user=user,
         state=snapshot,
         symbols=symbols,
+        deriv_callback_url=deriv_callback_url(),
         timeframe_options=list(TIMEFRAME_OPTIONS.keys()),
         strategy_options=STRATEGY_OPTIONS,
         mode_options=MODE_OPTIONS,
@@ -611,6 +662,10 @@ def render_dashboard_page():
 
 @app.route("/", methods=["GET", "POST"])
 def login():
+    token_redirect = handle_deriv_token_redirect()
+    if token_redirect:
+        return token_redirect
+
     if request.method == "POST":
         username = request.form.get("username", "").strip()
         login_code = request.form.get("login_code", "").strip()
@@ -675,6 +730,9 @@ def reset_password():
 @app.route("/dashboard")
 @login_required
 def dashboard():
+    token_redirect = handle_deriv_token_redirect()
+    if token_redirect:
+        return token_redirect
     return render_dashboard_page()
 
 
@@ -685,6 +743,7 @@ def deriv_connect():
     session["deriv_oauth_state"] = state
     params = {
         "app_id": str(Settings.DERIV_APP_ID),
+        "redirect_uri": deriv_callback_url(),
         "state": state,
     }
     return redirect(f"https://oauth.deriv.com/oauth2/authorize?{urlencode(params)}")
@@ -693,23 +752,18 @@ def deriv_connect():
 @app.route("/deriv/callback")
 @login_required
 def deriv_callback():
+    if request.args.get("error"):
+        error_description = request.args.get("error_description") or request.args.get("error")
+        flash(f"Deriv account linking failed: {error_description}", "error")
+        return redirect(url_for("dashboard"))
+
     expected_state = session.pop("deriv_oauth_state", "")
     returned_state = request.args.get("state", "")
     if expected_state and returned_state and expected_state != returned_state:
         flash("Deriv account linking failed. Please try again.", "error")
         return redirect(url_for("dashboard"))
 
-    accounts = []
-    for index in range(1, 20):
-        candidate = request.args.get(f"token{index}", "").strip()
-        if candidate:
-            accounts.append(
-                {
-                    "token": candidate,
-                    "account": request.args.get(f"acct{index}", "").strip(),
-                    "currency": request.args.get(f"cur{index}", "").strip(),
-                }
-            )
+    accounts = extract_deriv_accounts(request.args)
 
     if not accounts:
         flash("No Deriv token was returned. You can still paste an API token manually.", "error")
