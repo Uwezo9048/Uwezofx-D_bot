@@ -48,11 +48,10 @@
                 </div>
                 <div class="field-row field-row-wide deriv-link-panel">
                     <div>
-                        <span>Deriv Browser Link</span>
-                        <small class="field-hint">Optional OAuth flow. Use this only after your Deriv callback URL is configured.</small>
-                        <small class="field-hint">Callback: {{ deriv_callback_url }}</small>
+                        <span>Generate Deriv Token</span>
+                        <small class="field-hint">Open Deriv, create a token, paste it above, then click Connect Token.</small>
                     </div>
-                    <a class="btn btn-info" href="{{ url_for('deriv_connect') }}">Link Deriv Account</a>
+                    <a class="btn btn-info" href="https://app.deriv.com/account/api-token?platform=deriv" target="_blank" rel="noopener">Generate Token</a>
                 </div>
                 <label id="deriv-account-row" class="field-row field-row-wide {% if not state.deriv_accounts %}is-hidden{% endif %}">
                     <span>Linked Deriv Account</span>
@@ -331,9 +330,12 @@
     </section>
 </main>
 
+<script id="initial-position-ids" type="application/json">
+    {{ state.positions | map(attribute='id') | list | tojson }}
+</script>
 <script>
     let dashboardAudioContext = null;
-    let knownPositionIds = new Set({{ state.positions | map(attribute='id') | list | tojson }});
+    let knownPositionIds = new Set(JSON.parse(document.getElementById("initial-position-ids")?.textContent || "[]"));
     let tradeBeepReady = false;
 
     function escapeHtml(value) {
