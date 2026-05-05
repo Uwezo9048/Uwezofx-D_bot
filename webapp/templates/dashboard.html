@@ -44,8 +44,21 @@
                         <span>Deriv Browser Link</span>
                         <small class="field-hint">Sign in on Deriv and return with a linked session token.</small>
                     </div>
-                    <a class="btn btn-info" href="{{ url_for('deriv_connect') }}">Link Deriv Account</a>
+                    <a class="btn btn-info" href="{{ url_for('deriv_connect') }}" target="_blank" rel="noopener">Link Deriv Account</a>
                 </div>
+                {% if state.deriv_accounts %}
+                <label class="field-row field-row-wide">
+                    <span>Linked Deriv Account</span>
+                    <select name="deriv_account">
+                        {% for account in state.deriv_accounts %}
+                        <option value="{{ account.account }}" {% if account.account == state.config.deriv_account %}selected{% endif %}>
+                            {{ account.type }} - {{ account.account }}{% if account.currency %} ({{ account.currency }}){% endif %}
+                        </option>
+                        {% endfor %}
+                    </select>
+                    <small class="field-hint">Choose Demo or Real before starting the bot. Manual API token still works.</small>
+                </label>
+                {% endif %}
                 <label class="field-row field-row-wide">
                     <span>Previously Used Token</span>
                     <select id="token-cache-select">

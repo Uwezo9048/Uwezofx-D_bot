@@ -114,8 +114,10 @@ class WebBotManager:
                 "manual_stake": "5",
                 "manual_duration": "1",
                 "timeout_minutes": "5",
+                "deriv_account": "",
             },
             "session_token": "",
+            "deriv_accounts": [],
             "metrics": {
                 "balance": "--",
                 "stake": "--",
@@ -258,6 +260,7 @@ class WebBotManager:
                 "history_total": f"{history_total:+.2f}" if history_total else "0.00",
                 "last_updated": self.state["last_updated"],
                 "token_saved": bool(self.state.get("session_token")),
+                "deriv_accounts": list(self.state.get("deriv_accounts", [])),
             }
 
     def _set_error(self, message):
@@ -291,8 +294,45 @@ class WebBotManager:
             self.state["session_token"] = token
             self._touch()
 
+    def remember_deriv_accounts(self, accounts):
+        clean_accounts = []
+        for account in accounts:
+            token = str(account.get("token", "")).strip()
+            account_id = str(account.get("account", "")).strip()
+            if not token or not account_id:
+                continue
+            clean_accounts.append(
+                {
+                    "token": token,
+                    "account": account_id,
+                    "currency": str(account.get("currency", "")).strip(),
+                    "type": "Demo" if account_id.upper().startswith("VRTC") else "Real",
+                }
+            )
+        if not clean_accounts:
+            return
+        with self.lock:
+            self.state["deriv_accounts"] = clean_accounts
+            current_selection = self.state["config"].get("deriv_account", "")
+            account_ids = {item["account"] for item in clean_accounts}
+            if current_selection not in account_ids:
+                preferred_demo = next((item for item in clean_accounts if item["type"] == "Demo"), None)
+                self.state["config"]["deriv_account"] = (preferred_demo or clean_accounts[0])["account"]
+            self.state["session_token"] = self._token_for_selected_account_locked() or clean_accounts[0]["token"]
+            self._touch()
+
+    def _token_for_selected_account_locked(self):
+        selected_account = self.state["config"].get("deriv_account", "")
+        for account in self.state.get("deriv_accounts", []):
+            if account.get("account") == selected_account:
+                return account.get("token", "")
+        return ""
+
     def get_session_token(self):
         with self.lock:
+            selected_token = self._token_for_selected_account_locked()
+            if selected_token:
+                return selected_token
             return self.state.get("session_token", "")
 
     def _make_config(self):
@@ -659,27 +699,26 @@ def deriv_callback():
         flash("Deriv account linking failed. Please try again.", "error")
         return redirect(url_for("dashboard"))
 
-    token = ""
-    account = ""
-    currency = ""
+    accounts = []
     for index in range(1, 20):
         candidate = request.args.get(f"token{index}", "").strip()
         if candidate:
-            token = candidate
-            account = request.args.get(f"acct{index}", "").strip()
-            currency = request.args.get(f"cur{index}", "").strip()
-            break
+            accounts.append(
+                {
+                    "token": candidate,
+                    "account": request.args.get(f"acct{index}", "").strip(),
+                    "currency": request.args.get(f"cur{index}", "").strip(),
+                }
+            )
 
-    if not token:
+    if not accounts:
         flash("No Deriv token was returned. You can still paste an API token manually.", "error")
         return redirect(url_for("dashboard"))
 
     manager = current_manager()
     if manager:
-        manager.remember_token(token)
-    account_label = f" for {account.upper()}" if account else ""
-    currency_label = f" ({currency.upper()})" if currency else ""
-    flash(f"Deriv account linked{account_label}{currency_label}.", "success")
+        manager.remember_deriv_accounts(accounts)
+    flash("Deriv account linked. Select Demo or Real from the bot settings before running.", "success")
     return redirect(url_for("dashboard"))
 
 
