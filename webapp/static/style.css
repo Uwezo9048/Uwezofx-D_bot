@@ -129,6 +129,21 @@ label span {
     font-size: 0.76rem;
 }
 
+.deriv-link-panel {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: rgba(11, 17, 26, 0.62);
+}
+
+.deriv-link-panel .btn {
+    flex: 0 0 auto;
+}
+
 input,
 select {
     width: 100%;

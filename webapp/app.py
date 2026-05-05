@@ -1,11 +1,13 @@
 import asyncio
 import contextlib
 import os
+import secrets
 import threading
 import time
 from collections import deque
 from functools import wraps
 from pathlib import Path
+from urllib.parse import urlencode
 
 from flask import Flask, flash, jsonify, redirect, render_template, request, session, url_for
 
@@ -634,6 +636,51 @@ def reset_password():
 @login_required
 def dashboard():
     return render_dashboard_page()
+
+
+@app.route("/deriv/connect")
+@login_required
+def deriv_connect():
+    state = secrets.token_urlsafe(24)
+    session["deriv_oauth_state"] = state
+    params = {
+        "app_id": str(Settings.DERIV_APP_ID),
+        "state": state,
+    }
+    return redirect(f"https://oauth.deriv.com/oauth2/authorize?{urlencode(params)}")
+
+
+@app.route("/deriv/callback")
+@login_required
+def deriv_callback():
+    expected_state = session.pop("deriv_oauth_state", "")
+    returned_state = request.args.get("state", "")
+    if expected_state and returned_state and expected_state != returned_state:
+        flash("Deriv account linking failed. Please try again.", "error")
+        return redirect(url_for("dashboard"))
+
+    token = ""
+    account = ""
+    currency = ""
+    for index in range(1, 20):
+        candidate = request.args.get(f"token{index}", "").strip()
+        if candidate:
+            token = candidate
+            account = request.args.get(f"acct{index}", "").strip()
+            currency = request.args.get(f"cur{index}", "").strip()
+            break
+
+    if not token:
+        flash("No Deriv token was returned. You can still paste an API token manually.", "error")
+        return redirect(url_for("dashboard"))
+
+    manager = current_manager()
+    if manager:
+        manager.remember_token(token)
+    account_label = f" for {account.upper()}" if account else ""
+    currency_label = f" ({currency.upper()})" if currency else ""
+    flash(f"Deriv account linked{account_label}{currency_label}.", "success")
+    return redirect(url_for("dashboard"))
 
 
 @app.route("/healthz")

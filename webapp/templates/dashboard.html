@@ -39,6 +39,13 @@
                     <input id="api-token-input" type="password" name="token" placeholder="{{ 'Saved for this session' if state.token_saved else 'Enter Deriv API token' }}" autocomplete="off">
                     <small id="token-status" class="field-hint">{{ 'Token saved until logout or timeout.' if state.token_saved else 'Enter once, then it stays active for this login session.' }}</small>
                 </label>
+                <div class="field-row field-row-wide deriv-link-panel">
+                    <div>
+                        <span>Deriv Browser Link</span>
+                        <small class="field-hint">Sign in on Deriv and return with a linked session token.</small>
+                    </div>
+                    <a class="btn btn-info" href="{{ url_for('deriv_connect') }}">Link Deriv Account</a>
+                </div>
                 <label class="field-row field-row-wide">
                     <span>Previously Used Token</span>
                     <select id="token-cache-select">
