@@ -51,6 +51,7 @@ TIMEFRAME_OPTIONS = {
 STRATEGY_OPTIONS = ["ICT/SMS", "Over 1-3", "Under 6-8", "Even", "Odd"]
 MODE_OPTIONS = ["Monitor", "Auto-Trade", "Adaptive"]
 MARTINGALE_OPTIONS = ["Classic", "Reverse"]
+CONFIDENCE_LADDER_OPTIONS = ["75/80/85", "68/75/80"]
 MANUAL_CONTRACT_OPTIONS = [
     "Rise/Fall",
     "Higher/Lower",
@@ -116,6 +117,7 @@ class WebBotManager:
                 "confirmations": "2",
                 "mode": "Monitor",
                 "martingale_mode": "Classic",
+                "confidence_ladder": "75/80/85",
                 "manual_contract": "Rise/Fall",
                 "manual_stake": "5",
                 "manual_duration": "1",
@@ -373,6 +375,7 @@ class WebBotManager:
             martingale_mult=float(config_values["martingale_mult"]),
             max_martingale_steps=int(config_values["max_martingale_steps"]),
             martingale_mode=config_values["martingale_mode"],
+            confidence_ladder=config_values.get("confidence_ladder", "75/80/85"),
             confirmations_required=int(config_values["confirmations"]),
             selected_strategy=strategy,
             timeframe=config_values["timeframe"],
@@ -723,6 +726,7 @@ def render_dashboard_page():
         strategy_options=STRATEGY_OPTIONS,
         mode_options=MODE_OPTIONS,
         martingale_options=MARTINGALE_OPTIONS,
+        confidence_ladder_options=CONFIDENCE_LADDER_OPTIONS,
         manual_contract_options=MANUAL_CONTRACT_OPTIONS,
     )
 

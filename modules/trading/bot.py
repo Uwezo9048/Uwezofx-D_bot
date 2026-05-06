@@ -16,6 +16,11 @@ from modules.trading.indicator import CombinedICTandSMSIndicator, TradeSignal
 from modules.trading.analyzer import MarketAnalyzer
 from modules.trading.strategies import DigitAnalyzer, StrategySignals
 
+CONFIDENCE_LADDERS = {
+    "68/75/80": (68, 75, 80),
+    "75/80/85": (75, 80, 85),
+}
+
 class DerivBot:
     def __init__(self, api_token: str, config: BotConfig, log_callback=None,
                  balance_callback=None, stake_callback=None, signal_callback=None,
@@ -86,14 +91,15 @@ class DerivBot:
 
     def _martingale_confidence(self) -> int:
         """Confidence floor tied to the active martingale loss level."""
-        if self.consecutive <= 0:
-            return 75
-        if self.consecutive == 1:
-            return 80
-        return 85
+        ladder_name = getattr(self.config, "confidence_ladder", "75/80/85")
+        ladder = CONFIDENCE_LADDERS.get(ladder_name, CONFIDENCE_LADDERS["75/80/85"])
+        level = min(max(self.consecutive, 0), len(ladder) - 1)
+        return ladder[level]
 
     def _apply_martingale_confidence(self, confidence: float) -> int:
-        return min(85, max(self._martingale_confidence(), int(round(confidence or 0))))
+        ladder_name = getattr(self.config, "confidence_ladder", "75/80/85")
+        ladder = CONFIDENCE_LADDERS.get(ladder_name, CONFIDENCE_LADDERS["75/80/85"])
+        return min(max(ladder), max(self._martingale_confidence(), int(round(confidence or 0))))
 
     def _is_ws_open(self) -> bool:
         if self.ws is None:

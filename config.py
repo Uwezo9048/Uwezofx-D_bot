@@ -40,6 +40,7 @@ class BotConfig:
     adaptive_mode: bool = False
     min_digit_edge: float = 8.0
     min_digit_confidence: int = 65
+    confidence_ladder: str = "75/80/85"
     
     
     def save(self, filepath: str = "bot_config.json"):

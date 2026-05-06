@@ -109,6 +109,17 @@
                         {% endfor %}
                     </select>
                 </label>
+                <div class="field-row field-row-wide">
+                    <span>Confidence Ladder</span>
+                    <div class="mode-radios compact-radios">
+                        {% for option in confidence_ladder_options %}
+                        <label class="radio-pill">
+                            <input type="radio" name="confidence_ladder" value="{{ option }}" {% if option == state.config.confidence_ladder %}checked{% endif %}>
+                            <span>{{ option }}%</span>
+                        </label>
+                        {% endfor %}
+                    </div>
+                </div>
                 <label class="field-row field-row-wide">
                     <span>Strategy</span>
                     <select name="strategy">

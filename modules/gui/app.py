@@ -538,6 +538,7 @@ class DerivUwezoApp:
             confirmations = int(self.confirmations_var.get())
             strategy = self.strategy_select_var.get()
             martingale_mode = self.martingale_mode_var.get()
+            confidence_ladder = self.confidence_ladder_var.get()
             ticks_duration = int(self.ticks_duration_var.get()) if strategy in ["Over 1-3", "Under 6-8", "Even", "Odd"] else 5
         except ValueError as e:
             messagebox.showerror("Error", f"Invalid input: {e}")
@@ -554,6 +555,7 @@ class DerivUwezoApp:
             martingale_mult=mult,
             max_martingale_steps=max_steps,
             martingale_mode=martingale_mode,
+            confidence_ladder=confidence_ladder,
             confirmations_required=confirmations,
             selected_strategy=strategy,
             timeframe=timeframe_str
@@ -781,6 +783,18 @@ class DerivUwezoApp:
 
         self.martingale_mode_var = tk.StringVar(value="Classic")
         add_label_combo(settings_scroll, "Martingale Mode:", self.martingale_mode_var, ["Classic", "Reverse"], 10)
+
+        self.confidence_ladder_var = tk.StringVar(value="75/80/85")
+        confidence_frame = tk.Frame(settings_scroll, bg=ModernUI.COLORS['bg_card'])
+        confidence_frame.grid(row=row, column=0, columnspan=2, sticky='ew', padx=5, pady=5)
+        tk.Label(confidence_frame, text="Confidence Ladder:", fg=ModernUI.COLORS['text_secondary'],
+                 bg=ModernUI.COLORS['bg_card'], font=('Segoe UI', 9), width=LABEL_WIDTH, anchor='w').pack(side='left', padx=(0, 5))
+        for ladder in ["75/80/85", "68/75/80"]:
+            rb = tk.Radiobutton(confidence_frame, text=f"{ladder}%", variable=self.confidence_ladder_var, value=ladder,
+                                fg='white', bg=ModernUI.COLORS['bg_card'], selectcolor=ModernUI.COLORS['bg_sidebar'],
+                                activebackground=ModernUI.COLORS['bg_card'], font=('Segoe UI', 8))
+            rb.pack(side='left', padx=5)
+        row += 1
 
         self.strategy_select_var = tk.StringVar(value="ICT/SMS")
         strategy_combo = add_label_combo(settings_scroll, "Strategy:", self.strategy_select_var,
