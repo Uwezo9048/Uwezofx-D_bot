@@ -38,6 +38,8 @@ class BotConfig:
     timeframe: str = "1m"
     auto_trade: bool = False
     adaptive_mode: bool = False
+    adaptive_enabled: bool = False
+    adaptive_pair: str = "Over/Under"
     min_digit_edge: float = 8.0
     min_digit_confidence: int = 65
     confidence_ladder: str = "75/80/85"

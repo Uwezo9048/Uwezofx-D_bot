@@ -129,6 +129,21 @@
                     </select>
                 </label>
                 <label class="field-row">
+                    <span>Adaptive Analysis</span>
+                    <label class="toggle-row">
+                        <input type="checkbox" name="adaptive_enabled" {% if state.config.adaptive_enabled == "on" %}checked{% endif %}>
+                        <span>Enabled</span>
+                    </label>
+                </label>
+                <label class="field-row">
+                    <span>Adaptive Pair</span>
+                    <select name="adaptive_pair">
+                        {% for pair in adaptive_pair_options %}
+                        <option value="{{ pair }}" {% if pair == state.config.adaptive_pair %}selected{% endif %}>{{ pair }}</option>
+                        {% endfor %}
+                    </select>
+                </label>
+                <label class="field-row">
                     <span>Duration</span>
                     <input type="text" name="duration" value="{{ state.config.duration }}">
                 </label>
@@ -203,6 +218,7 @@
         <section class="card nav-workspace">
             <div class="nav-tabs">
                 <button class="nav-tab active" type="button" data-tab="positions-history">Positions/History</button>
+                <button class="nav-tab" type="button" data-tab="advisory-feed">Advisory Feed</button>
                 <button class="nav-tab" type="button" data-tab="digit-stats">Digit Stats</button>
                 <button class="nav-tab" type="button" data-tab="event-log">Event Log</button>
             </div>
@@ -301,6 +317,25 @@
                         </div>
                     </div>
                 </section>
+            </section>
+
+            <section class="tab-panel" data-panel="advisory-feed">
+                <div class="panel-block nav-panel-card">
+                    <div class="panel-head">
+                        <h2>Advisory Feed</h2>
+                        <div class="muted">Mode and direction guidance</div>
+                    </div>
+                    <div class="advisory-list" id="advisory-list">
+                        {% for item in state.advisories %}
+                        <div class="advisory-item">
+                            <div class="advisory-main">{{ item.message }}</div>
+                            <div class="advisory-meta">{{ item.time }} | {{ item.action }} | {{ item.confidence }}%</div>
+                        </div>
+                        {% else %}
+                        <p class="empty-state">No advisories yet.</p>
+                        {% endfor %}
+                    </div>
+                </div>
             </section>
 
             <section class="tab-panel" data-panel="digit-stats">
@@ -455,6 +490,24 @@
         box.scrollTop = box.scrollHeight;
     }
 
+    function renderAdvisories(rows) {
+        const box = document.getElementById("advisory-list");
+        if (!box) {
+            return;
+        }
+        if (!rows.length) {
+            box.innerHTML = '<p class="empty-state">No advisories yet.</p>';
+            return;
+        }
+        box.innerHTML = rows.map((item) => `
+            <div class="advisory-item">
+                <div class="advisory-main">${escapeHtml(item.message)}</div>
+                <div class="advisory-meta">${escapeHtml(item.time)} | ${escapeHtml(item.action)} | ${escapeHtml(item.confidence)}%</div>
+            </div>
+        `).join("");
+        box.scrollTop = box.scrollHeight;
+    }
+
     function renderDerivAccounts(accounts = [], selectedAccount = "") {
         const row = document.getElementById("deriv-account-row");
         const select = document.getElementById("deriv-account-select");
@@ -503,6 +556,7 @@
         renderHistory(data.history);
         renderDigits(data.digits);
         renderLogs(data.logs);
+        renderAdvisories(data.advisories || []);
         renderDerivAccounts(data.deriv_accounts || [], data.config?.deriv_account || "");
 
         if (hasNewPosition) {

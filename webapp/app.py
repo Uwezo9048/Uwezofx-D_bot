@@ -49,7 +49,8 @@ TIMEFRAME_OPTIONS = {
 }
 
 STRATEGY_OPTIONS = ["ICT/SMS", "Over 1-3", "Under 6-8", "Even", "Odd"]
-MODE_OPTIONS = ["Monitor", "Auto-Trade", "Adaptive"]
+MODE_OPTIONS = ["Monitor", "Auto-Trade"]
+ADAPTIVE_PAIR_OPTIONS = ["Over/Under", "Even/Odd", "Buy/Sell"]
 MARTINGALE_OPTIONS = ["Classic", "Reverse"]
 CONFIDENCE_LADDER_OPTIONS = ["75/80/85", "68/75/80"]
 MANUAL_CONTRACT_OPTIONS = [
@@ -116,6 +117,8 @@ class WebBotManager:
                 "max_martingale_steps": "4",
                 "confirmations": "2",
                 "mode": "Monitor",
+                "adaptive_enabled": "",
+                "adaptive_pair": "Over/Under",
                 "martingale_mode": "Classic",
                 "confidence_ladder": "75/80/85",
                 "manual_contract": "Rise/Fall",
@@ -136,6 +139,7 @@ class WebBotManager:
             "history": [],
             "digits": self._default_digits(),
             "logs": deque(maxlen=250),
+            "advisories": deque(maxlen=80),
             "last_error": "",
             "last_updated": None,
         }
@@ -152,6 +156,18 @@ class WebBotManager:
     def _append_log(self, message):
         with self.lock:
             self.state["logs"].append(message)
+            self._touch()
+
+    def _append_advisory(self, message, action="HOLD", confidence=0):
+        with self.lock:
+            self.state["advisories"].append(
+                {
+                    "time": time.strftime("%H:%M:%S"),
+                    "message": str(message),
+                    "action": str(action or "HOLD"),
+                    "confidence": int(round(float(confidence or 0))),
+                }
+            )
             self._touch()
 
     def _update_balance(self, balance, currency):
@@ -264,6 +280,7 @@ class WebBotManager:
                 "history": list(self.state["history"]),
                 "digits": list(self.state["digits"]),
                 "logs": list(self.state["logs"]),
+                "advisories": list(self.state["advisories"]),
                 "last_error": self.state["last_error"],
                 "history_total": f"{history_total:+.2f}" if history_total else "0.00",
                 "last_updated": self.state["last_updated"],
@@ -292,6 +309,7 @@ class WebBotManager:
                 value = form.get(field)
                 if value is not None:
                     self.state["config"][field] = value.strip()
+            self.state["config"]["adaptive_enabled"] = "on" if form.get("adaptive_enabled") == "on" else ""
             self._touch()
 
     def remember_token(self, token):
@@ -379,6 +397,8 @@ class WebBotManager:
             confirmations_required=int(config_values["confirmations"]),
             selected_strategy=strategy,
             timeframe=config_values["timeframe"],
+            adaptive_enabled=config_values.get("adaptive_enabled") == "on",
+            adaptive_pair=config_values.get("adaptive_pair", "Over/Under"),
         )
 
     def start_bot(self, token):
@@ -403,6 +423,7 @@ class WebBotManager:
                 strategy_update_callback=self._update_strategy,
                 positions_callback=self._update_positions,
                 trade_history_callback=self._update_history,
+                advisory_callback=self._append_advisory,
             )
             self.loop = asyncio.new_event_loop()
             self.bot.set_event_loop(self.loop)
@@ -725,6 +746,7 @@ def render_dashboard_page():
         timeframe_options=list(TIMEFRAME_OPTIONS.keys()),
         strategy_options=STRATEGY_OPTIONS,
         mode_options=MODE_OPTIONS,
+        adaptive_pair_options=ADAPTIVE_PAIR_OPTIONS,
         martingale_options=MARTINGALE_OPTIONS,
         confidence_ladder_options=CONFIDENCE_LADDER_OPTIONS,
         manual_contract_options=MANUAL_CONTRACT_OPTIONS,

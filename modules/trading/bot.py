@@ -25,7 +25,7 @@ class DerivBot:
     def __init__(self, api_token: str, config: BotConfig, log_callback=None,
                  balance_callback=None, stake_callback=None, signal_callback=None,
                  confidence_callback=None, digit_stats_callback=None, strategy_update_callback=None,
-                 positions_callback=None, trade_history_callback=None):
+                 positions_callback=None, trade_history_callback=None, advisory_callback=None):
         self.token = api_token
         self.config = config
         self.app_id = config.app_id or Settings.DERIV_APP_ID
@@ -38,6 +38,7 @@ class DerivBot:
         self.strategy_update_callback = strategy_update_callback
         self.positions_callback = positions_callback
         self.trade_history_callback = trade_history_callback
+        self.advisory_callback = advisory_callback
 
         self.ws = None
         self.req_id = 0
@@ -82,8 +83,10 @@ class DerivBot:
         self.last_strategy_check = 0
 
         self.auto_trade = False
-        self.adaptive_mode = False
+        self.adaptive_mode = bool(config.adaptive_enabled or config.adaptive_mode)
         self.latest_confidence = 0
+        self._last_advice_key = None
+        self._last_advice_time = 0
 
         self.open_positions = []
         self.history_report_path = Path("reports") / "trade_history_report.html"
@@ -638,10 +641,63 @@ class DerivBot:
         self._loop = loop
 
     def set_mode(self, mode: str):
-        self.auto_trade = mode in ["Auto-Trade", "Adaptive"]
-        self.adaptive_mode = (mode == "Adaptive")
+        self.auto_trade = mode == "Auto-Trade"
+        self.adaptive_mode = bool(self.config.adaptive_enabled or self.config.adaptive_mode)
         if self.log:
             self.log_message(f"Mode changed to: {mode} (AutoTrade: {self.auto_trade}, Adaptive: {self.adaptive_mode})")
+
+    def _adaptive_pair(self) -> str:
+        return (self.config.adaptive_pair or "Over/Under").strip()
+
+    def _needs_tick_feed(self) -> bool:
+        return self.config.selected_strategy in ["Over 1-3", "Under 6-8", "Even", "Odd"] or (
+            self.adaptive_mode and self._adaptive_pair() in ["Over/Under", "Even/Odd"]
+        )
+
+    def _needs_candle_feed(self) -> bool:
+        return self.config.selected_strategy == "ICT/SMS" or (
+            self.adaptive_mode and self._adaptive_pair() == "Buy/Sell"
+        )
+
+    def _publish_advisory(self, message: str, action: str = "HOLD", confidence: float = 0):
+        now = time.time()
+        key = (message, action, int(round(confidence or 0)))
+        if key == self._last_advice_key and now - self._last_advice_time < 10:
+            return
+        self._last_advice_key = key
+        self._last_advice_time = now
+        if self.advisory_callback:
+            self.advisory_callback(message, action, confidence)
+
+    def _advise_trade_mode(self, signal: str, confidence: float):
+        if signal == TradeSignal.NEUTRAL:
+            self._publish_advisory("No clean edge right now. Monitor mode is preferred.", "MONITOR", confidence)
+            return
+        min_confidence = self._minimum_trade_confidence()
+        if confidence >= min_confidence:
+            action = "AUTO-TRADE" if not self.auto_trade else "STAY AUTO"
+            self._publish_advisory(
+                f"{signal} edge is strong enough for auto-trading ({confidence:.0f}% >= {min_confidence:.0f}%).",
+                action,
+                confidence,
+            )
+        else:
+            action = "MONITOR" if self.auto_trade else "STAY MONITOR"
+            self._publish_advisory(
+                f"{signal} edge is below the trading floor ({confidence:.0f}% < {min_confidence:.0f}%).",
+                action,
+                confidence,
+            )
+
+    def _select_adaptive_digit_setup(self) -> str:
+        pair = self._adaptive_pair()
+        if pair == "Over/Under":
+            signal, _ = StrategySignals.over_under_signal(self.digit_analyzer)
+            return signal
+        if pair == "Even/Odd":
+            signal, _ = StrategySignals.even_odd_signal(self.digit_analyzer)
+            return signal
+        return TradeSignal.NEUTRAL
 
     async def reset_martingale(self):
         """Reset martingale state and ignore the result of the current in‑progress trade."""
@@ -852,21 +908,25 @@ class DerivBot:
                             stats_copy = {d: (self.digit_analyzer.digits[d].percentage, self.digit_analyzer.digits[d].color) for d in range(10)}
                             self.digit_stats_callback(stats_copy)
 
-                        if self.adaptive_mode:
+                        if self.adaptive_mode and self._adaptive_pair() in ["Over/Under", "Even/Odd"]:
                             now = time.time()
                             if now - self.last_strategy_check >= 2:
                                 self.last_strategy_check = now
-                                best = StrategySignals.get_best_strategy(self.digit_analyzer)
+                                best = self._select_adaptive_digit_setup()
                                 if best != TradeSignal.NEUTRAL and best != self.config.selected_strategy:
                                     self.config.selected_strategy = best
                                     self.digit_setup_active = best
                                     self.digit_trigger_state.clear()
                                     if self.strategy_update_callback:
                                         self.strategy_update_callback(best)
-                                    self.log_message(f"🔄 Adaptive switch to: {best}")
+                                    self.log_message(f"Adaptive switch to: {best}")
+                                    confidence = self._apply_martingale_confidence(self._digit_win_rate(best))
+                                    self._advise_trade_mode(best, confidence)
+                                elif best == TradeSignal.NEUTRAL:
+                                    self._advise_trade_mode(TradeSignal.NEUTRAL, 0)
 
                         active_strategy = self.config.selected_strategy
-                        if active_strategy in ["Over 1-3", "Under 6-8", "Even", "Odd"]:
+                        if active_strategy in ["Over 1-3", "Under 6-8", "Even", "Odd", "OVER", "UNDER", "EVEN", "ODD"]:
                             strategy_code = {"Over 1-3": "OVER", "Under 6-8": "UNDER"}.get(active_strategy, active_strategy.upper())
                             if len(self.tick_history_digits) % 10 == 0:
                                 if strategy_code in ["OVER", "UNDER"]:
@@ -883,6 +943,7 @@ class DerivBot:
                                 win_rate = self._apply_martingale_confidence(self._digit_win_rate(trade_signal))
                                 self.latest_confidence = win_rate
                                 self.update_confidence_display(win_rate)
+                                self._advise_trade_mode(trade_signal, win_rate)
                                 if self.signal_callback:
                                     self.signal_callback(trade_signal)
                                 self.log_message(f"🎯 SIGNAL: {trade_signal}")
@@ -904,7 +965,7 @@ class DerivBot:
                                     else:
                                         self.log_message(f"Signal suppressed by cooldown", "DEBUG")
 
-                elif 'ohlc' in data and self.config.selected_strategy == "ICT/SMS":
+                elif 'ohlc' in data and self._needs_candle_feed():
                     ohlc = data['ohlc']
                     candle_minute = int(ohlc['epoch']) // 60
                     if self._last_candle_minute is None or candle_minute != self._last_candle_minute:
@@ -945,6 +1006,8 @@ class DerivBot:
                         ) if signal != TradeSignal.NEUTRAL else 0
                         self.latest_confidence = confidence
                         self.update_confidence_display(confidence)
+                        if self.adaptive_mode and self._adaptive_pair() == "Buy/Sell":
+                            self._advise_trade_mode(signal, confidence)
                         if self.signal_callback:
                             self.signal_callback(signal)
                         if signal != TradeSignal.NEUTRAL:
@@ -1469,13 +1532,14 @@ class DerivBot:
 
                 await self.get_open_positions(subscribe=True)
 
-                if self.config.selected_strategy in ["Over 1-3", "Under 6-8", "Even", "Odd"]:
+                if self._needs_tick_feed():
                     tick_sub = await self._send({"ticks": self.config.symbol, "subscribe": 1})
                     if 'error' in tick_sub:
                         self.log_message(f"Tick subscription failed: {tick_sub['error']['message']}", "ERROR")
                         return False
                     self.log_message(f"Subscribed to {self.config.symbol} ticks")
-                else:
+
+                if self._needs_candle_feed():
                     granularity = self.config.granularity_seconds
                     sub = await self._send({
                         "ticks_history": self.config.symbol,

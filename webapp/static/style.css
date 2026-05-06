@@ -449,6 +449,20 @@ select:focus {
     margin: 0;
 }
 
+.toggle-row {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 38px;
+    color: #eef3ff;
+    font-size: 0.86rem;
+}
+
+.toggle-row input {
+    width: auto;
+    margin: 0;
+}
+
 .action-grid .btn {
     flex: 1 1 140px;
 }
@@ -665,6 +679,34 @@ tbody td {
     font-family: Consolas, "Courier New", monospace;
     font-size: 0.8rem;
     line-height: 1.45;
+}
+
+.advisory-list {
+    display: grid;
+    align-content: start;
+    gap: 10px;
+    height: 520px;
+    overflow-y: auto;
+}
+
+.advisory-item {
+    padding: 12px;
+    border-radius: 8px;
+    border: 1px solid rgba(56, 189, 248, 0.35);
+    background: rgba(17, 27, 46, 0.9);
+}
+
+.advisory-main {
+    color: #eef3ff;
+    font-size: 0.92rem;
+    line-height: 1.35;
+}
+
+.advisory-meta {
+    margin-top: 6px;
+    color: var(--accent-info);
+    font-size: 0.78rem;
+    font-weight: 700;
 }
 
 .welcome,
