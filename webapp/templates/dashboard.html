@@ -658,7 +658,7 @@
             }
             timer = setTimeout(() => {
                 sessionStorage.removeItem("uwezoCurrentApiToken");
-                window.location.href = "{{ url_for('logout') }}";
+                window.location.href = "{{ url_for('session_timeout') }}";
             }, getTimeoutMs());
         };
 

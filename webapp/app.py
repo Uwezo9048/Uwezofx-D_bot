@@ -559,6 +559,17 @@ class WebBotManager:
             self._touch()
         return True, f"Timeout set to {timeout_value} minute{'s' if timeout_value != 1 else ''}."
 
+    def pause_for_session_timeout(self):
+        with self.lock:
+            self.state["config"]["mode"] = "Monitor"
+            bot = self.bot
+        if bot:
+            bot.set_mode("Monitor")
+            self._append_log("Dashboard timed out. Bot activity kept; trading paused in Monitor mode.")
+        else:
+            self._append_log("Dashboard timed out. Activity kept for next login.")
+        return True, "Session timed out. Bot activity was kept in Monitor mode."
+
     def close_position(self, contract_id):
         if not self.bot:
             return False, "Bot is not running."
@@ -824,6 +835,16 @@ def logout():
         bot_hub.pop_manager(user)
     session.clear()
     flash("Logged out.", "success")
+    return redirect(url_for("login"))
+
+
+@app.route("/session-timeout")
+def session_timeout():
+    manager = current_manager()
+    if manager:
+        manager.pause_for_session_timeout()
+    session.clear()
+    flash("Session timed out. Bot activity was kept and trading is paused in Monitor mode.", "success")
     return redirect(url_for("login"))
 
 
