@@ -374,6 +374,8 @@
     </section>
 </main>
 
+<div id="advisory-toast" class="advisory-toast" aria-live="polite" aria-atomic="true"></div>
+
 <script id="initial-position-ids" type="application/json">
     {{ state.positions | map(attribute='id') | list | tojson }}
 </script>
@@ -381,6 +383,8 @@
     let dashboardAudioContext = null;
     let knownPositionIds = new Set(JSON.parse(document.getElementById("initial-position-ids")?.textContent || "[]"));
     let tradeBeepReady = false;
+    let lastAdvisoryKey = "";
+    let advisoryToastTimer = null;
 
     function escapeHtml(value) {
         return String(value ?? "")
@@ -508,6 +512,36 @@
         box.scrollTop = box.scrollHeight;
     }
 
+    function showAdvisoryToast(item) {
+        const toast = document.getElementById("advisory-toast");
+        if (!toast || !item) {
+            return;
+        }
+        const confidence = Number.parseInt(item.confidence || 0, 10);
+        const confidenceText = Number.isFinite(confidence) && confidence > 0 ? ` (${confidence}%)` : "";
+        toast.textContent = `${item.action}: ${item.message}${confidenceText}`;
+        toast.classList.add("show");
+        if (advisoryToastTimer) {
+            clearTimeout(advisoryToastTimer);
+        }
+        advisoryToastTimer = setTimeout(() => {
+            toast.classList.remove("show");
+        }, 5500);
+    }
+
+    function maybeShowLatestAdvisory(rows) {
+        if (!rows.length) {
+            return;
+        }
+        const latest = rows[rows.length - 1];
+        const key = `${latest.time}|${latest.action}|${latest.message}|${latest.confidence}`;
+        if (key === lastAdvisoryKey) {
+            return;
+        }
+        lastAdvisoryKey = key;
+        showAdvisoryToast(latest);
+    }
+
     function renderDerivAccounts(accounts = [], selectedAccount = "") {
         const row = document.getElementById("deriv-account-row");
         const select = document.getElementById("deriv-account-select");
@@ -556,7 +590,9 @@
         renderHistory(data.history);
         renderDigits(data.digits);
         renderLogs(data.logs);
-        renderAdvisories(data.advisories || []);
+        const advisories = data.advisories || [];
+        renderAdvisories(advisories);
+        maybeShowLatestAdvisory(advisories);
         renderDerivAccounts(data.deriv_accounts || [], data.config?.deriv_account || "");
 
         if (hasNewPosition) {

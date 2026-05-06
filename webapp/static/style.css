@@ -709,6 +709,33 @@ tbody td {
     font-weight: 700;
 }
 
+.advisory-toast {
+    position: fixed;
+    left: 50%;
+    top: 50%;
+    z-index: 2000;
+    width: min(760px, calc(100vw - 32px));
+    padding: 18px 24px;
+    transform: translate(-50%, -50%) scale(0.96);
+    border: 1px solid rgba(245, 184, 75, 0.48);
+    border-radius: 8px;
+    background: rgba(8, 12, 20, 0.38);
+    color: #ffd84d;
+    text-align: center;
+    font-size: 1.35rem;
+    font-weight: 900;
+    line-height: 1.28;
+    text-shadow: 0 2px 12px rgba(0, 0, 0, 0.85);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 220ms ease, transform 220ms ease;
+}
+
+.advisory-toast.show {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+}
+
 .welcome,
 .muted {
     font-size: 0.84rem;
