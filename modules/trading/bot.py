@@ -1072,15 +1072,15 @@ class DerivBot:
         contract_type = contract_map.get(signal, "CALL")
 
         stake = round(self.current_stake, 2)
-        if stake < 1.0:
-            stake = self.config.base_stake
-            self.current_stake = self.config.base_stake
-            self.consecutive = 0
+        if stake <= 0:
+            self.log_message("Stake must be greater than zero", "ERROR")
+            return
         if stake > self.balance:
             stake = math.floor(self.balance * 100) / 100
-            if stake < 1.0:
+            if stake <= 0:
                 self.log_message("Insufficient balance", "ERROR")
                 return
+            self.log_message(f"Stake reduced to available balance: {stake:.2f}", "WARN")
 
         if self.config.selected_strategy in ["Over 1-3", "Under 6-8", "Even", "Odd"]:
             duration_unit = "t"
@@ -1117,12 +1117,18 @@ class DerivBot:
             self.log_message(f"Buy error: {buy['error']['message']}", "ERROR")
             return
         trade_id = buy['buy']['contract_id']
+        executed_stake = self._safe_float(buy.get('buy', {}).get('buy_price', stake), stake)
+        if abs(executed_stake - stake) >= 0.01:
+            self.log_message(
+                f"Deriv executed stake {executed_stake:.2f} after bot requested {stake:.2f}",
+                "WARN",
+            )
         self.log_message(f"Trade opened: {signal} {trade_id}")
         self.last_trade_time = time.time()
         self._remember_open_position(
             trade_id,
             contract_type,
-            self._safe_float(buy.get('buy', {}).get('buy_price', stake), stake),
+            executed_stake,
             self._safe_float(buy.get('buy', {}).get('payout', prop.get('proposal', {}).get('payout', 0))),
         )
         with contextlib.suppress(Exception):
