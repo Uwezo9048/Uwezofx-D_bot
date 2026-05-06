@@ -645,6 +645,18 @@ class DerivBot:
         self.adaptive_mode = bool(self.config.adaptive_enabled or self.config.adaptive_mode)
         if self.log:
             self.log_message(f"Mode changed to: {mode} (AutoTrade: {self.auto_trade}, Adaptive: {self.adaptive_mode})")
+        if not self.auto_trade:
+            self._publish_advisory(
+                "Mode is Monitor. The bot will analyze and advise, but it will not place trades.",
+                "MONITOR ONLY",
+                0,
+            )
+        elif self.adaptive_mode:
+            self._publish_advisory(
+                f"Auto-Trade is active with adaptive {self._adaptive_pair()} analysis.",
+                "AUTO-TRADE READY",
+                0,
+            )
 
     def _adaptive_pair(self) -> str:
         return (self.config.adaptive_pair or "Over/Under").strip()
@@ -989,11 +1001,21 @@ class DerivBot:
                                                 f"(win-rate {win_rate:.1f}% >= {min_confidence:.1f}%)"
                                             )
                                         else:
+                                            self._publish_advisory(
+                                                f"{trade_signal} signal skipped because win-rate is below the minimum.",
+                                                "WAIT",
+                                                win_rate,
+                                            )
                                             self.log_message(
                                                 f"⚠️ Signal skipped: {trade_signal} win-rate {win_rate:.1f}% "
                                                 f"below minimum {min_confidence:.1f}%"
                                             )
                                     else:
+                                        self._publish_advisory(
+                                            f"{trade_signal} signal is valid, but cooldown is still active.",
+                                            "WAIT",
+                                            win_rate,
+                                        )
                                         self.log_message(f"Signal suppressed by cooldown", "DEBUG")
 
                 elif 'ohlc' in data and self._needs_candle_feed():
@@ -1076,11 +1098,21 @@ class DerivBot:
                                             f"(confidence {self.latest_confidence:.0f}% >= {min_confidence:.0f}%)"
                                         )
                                     else:
+                                        self._publish_advisory(
+                                            "Confirmed Buy/Sell signal skipped because confidence is below the minimum.",
+                                            "WAIT",
+                                            self.latest_confidence,
+                                        )
                                         self.log_message(
                                             f"⚠️ Confirmed signal skipped: confidence {self.latest_confidence:.0f}% "
                                             f"below minimum {min_confidence:.0f}%"
                                         )
                                 else:
+                                    self._publish_advisory(
+                                        "Confirmed Buy/Sell signal is valid, but cooldown is still active.",
+                                        "WAIT",
+                                        self.latest_confidence,
+                                    )
                                     self.log_message(f"Confirmed signal suppressed by cooldown", "DEBUG")
 
                 elif 'candles' in data:
@@ -1150,9 +1182,20 @@ class DerivBot:
 
     async def _place_trade(self, signal: str):
         if not self.auto_trade:
+            self.log_message(f"Trade blocked: mode is Monitor, not Auto-Trade ({signal})", "WARN")
+            self._publish_advisory(
+                f"{signal} was detected, but trades are blocked because Mode is Monitor.",
+                "SWITCH TO AUTO-TRADE",
+                self.latest_confidence,
+            )
             return
         if self.config.max_daily_loss > 0 and self.daily_pnl <= -self.config.max_daily_loss:
             self.log_message("Daily loss limit reached", "WARN")
+            self._publish_advisory(
+                "Daily loss limit reached. Trading is paused.",
+                "MONITOR",
+                self.latest_confidence,
+            )
             return
 
         contract_map = {

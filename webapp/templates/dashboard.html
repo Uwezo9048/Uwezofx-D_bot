@@ -581,6 +581,11 @@
         if (timeoutInput && data.config?.timeout_minutes && document.activeElement !== timeoutInput) {
             timeoutInput.value = data.config.timeout_minutes;
         }
+        if (data.config?.mode) {
+            document.querySelectorAll('input[name="mode"]').forEach((input) => {
+                input.checked = input.value === data.config.mode;
+            });
+        }
 
         const historyTotal = document.getElementById("history-total");
         historyTotal.textContent = `Net Profit/Loss: ${data.history_total}`;
@@ -677,15 +682,7 @@
             "{{ url_for('refresh_bot_data') }}",
         ]);
 
-        document.addEventListener("submit", async (event) => {
-            const form = event.target;
-            const submitter = event.submitter;
-            const action = submitter?.getAttribute("formaction") || form.getAttribute("action");
-            if (!asyncActions.has(action)) {
-                return;
-            }
-
-            event.preventDefault();
+        async function postFormAction(form, action, submitter = null) {
             const formData = new FormData(form);
             const apiToken = document.getElementById("api-token-input")?.value.trim();
             if (apiToken && !formData.get("token")) {
@@ -698,18 +695,32 @@
             if (submitter?.name) {
                 formData.set(submitter.name, submitter.value);
             }
+
+            const response = await fetch(action, {
+                method: "POST",
+                body: formData,
+                headers: {"X-Requested-With": "fetch"},
+            });
+            const data = await response.json();
+            if (data.metrics) {
+                applyDashboardData(data);
+            }
+            return {response, data};
+        }
+
+        document.addEventListener("submit", async (event) => {
+            const form = event.target;
+            const submitter = event.submitter;
+            const action = submitter?.getAttribute("formaction") || form.getAttribute("action");
+            if (!asyncActions.has(action)) {
+                return;
+            }
+
+            event.preventDefault();
             submitter?.setAttribute("disabled", "disabled");
 
             try {
-                const response = await fetch(action, {
-                    method: "POST",
-                    body: formData,
-                    headers: {"X-Requested-With": "fetch"},
-                });
-                const data = await response.json();
-                if (data.metrics) {
-                    applyDashboardData(data);
-                }
+                const {response, data} = await postFormAction(form, action, submitter);
                 if (response.ok && action === "{{ url_for('manual_trade') }}") {
                     playTradeBeep();
                 }
@@ -720,6 +731,22 @@
             } finally {
                 submitter?.removeAttribute("disabled");
             }
+        });
+
+        document.querySelectorAll('input[name="mode"]').forEach((input) => {
+            input.addEventListener("change", async () => {
+                const form = input.closest("form");
+                if (!form) {
+                    return;
+                }
+                try {
+                    const {response, data} = await postFormAction(form, "{{ url_for('set_mode') }}");
+                    showFlash(data.message || `Mode set to ${input.value}.`, response.ok ? "success" : "error");
+                } catch (error) {
+                    console.error("Mode switch failed", error);
+                    showFlash("Mode switch failed. Please press Run Bot.", "error");
+                }
+            });
         });
     }
 
