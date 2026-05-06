@@ -403,14 +403,38 @@ class WebBotManager:
 
     def start_bot(self, token):
         with self.lock:
-            if self.state["running"]:
-                return False, "Bot is already running."
-
             try:
                 config = self._make_config()
             except Exception as exc:
                 return False, f"Invalid bot settings: {exc}"
 
+            if self.state["running"]:
+                bot = self.bot
+                mode = self.state["config"]["mode"]
+                if bot:
+                    bot.config = config
+                    bot.set_mode(mode)
+                self._touch()
+                should_refresh_feeds = bool(bot)
+            else:
+                should_refresh_feeds = False
+
+            if should_refresh_feeds:
+                pass
+            elif self.state["running"]:
+                return False, "Bot is already running."
+
+        if should_refresh_feeds:
+            ok, result = self._run_coro(bot.ensure_market_feeds(), timeout=10)
+            self._append_log(
+                f"Running bot settings updated | Mode: {mode} | Adaptive: {'On' if bot.adaptive_mode else 'Off'} "
+                f"({bot.config.adaptive_pair})"
+            )
+            if not ok:
+                return False, f"Bot settings updated, but feed refresh failed: {result}"
+            return True, "Bot settings updated."
+
+        with self.lock:
             self.bot = DerivBot(
                 token,
                 config,
@@ -510,9 +534,17 @@ class WebBotManager:
         with self.lock:
             self.state["config"]["mode"] = mode
             bot = self.bot
+            config_values = dict(self.state["config"])
         if bot:
+            bot.config.adaptive_enabled = config_values.get("adaptive_enabled") == "on"
+            bot.config.adaptive_pair = config_values.get("adaptive_pair", "Over/Under")
+            bot.config.selected_strategy = config_values.get("strategy", bot.config.selected_strategy)
             bot.set_mode(mode)
-            self._append_log(f"Mode changed to: {mode}")
+            self._append_log(
+                f"Mode changed to: {mode} | Adaptive: {'On' if bot.adaptive_mode else 'Off'} "
+                f"({bot.config.adaptive_pair})"
+            )
+            self._run_coro(bot.ensure_market_feeds(), timeout=10)
         return True, f"Mode set to {mode}."
 
     def set_timeout(self, timeout_minutes):
@@ -976,7 +1008,8 @@ def set_mode():
             return jsonify({"success": False, "message": "Please log in first."}), 401
         flash("Please log in first.", "error")
         return redirect(url_for("login"))
-    mode = request.form.get("mode", "Monitor")
+    manager.update_config_from_form(request.form)
+    mode = request.form.get("mode", manager.snapshot()["config"].get("mode", "Monitor"))
     success, message = manager.set_mode(mode)
     if request.headers.get("X-Requested-With") == "fetch":
         payload = manager.snapshot()

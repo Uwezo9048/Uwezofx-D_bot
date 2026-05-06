@@ -147,3 +147,23 @@ class StakeAndMartingaleTests(unittest.TestCase):
         self.assertTrue(bot.auto_trade)
         self.assertTrue(bot.adaptive_mode)
         self.assertTrue(bot._needs_candle_feed())
+
+    def test_adaptive_digit_direction_places_tick_contract(self):
+        config = BotConfig(
+            base_stake=0.40,
+            adaptive_enabled=True,
+            adaptive_pair="Over/Under",
+            selected_strategy="OVER",
+            ticks_duration=3,
+        )
+        bot = RecordingBot(config)
+        bot.set_mode("Auto-Trade")
+
+        with patch("modules.trading.bot.asyncio.sleep", _no_sleep):
+            asyncio.run(bot._place_trade(TradeSignal.OVER))
+
+        proposal = next(msg for msg in bot.sent_messages if "proposal" in msg)
+        self.assertEqual(proposal["contract_type"], "DIGITOVER")
+        self.assertEqual(proposal["duration_unit"], "t")
+        self.assertEqual(proposal["duration"], 3)
+        self.assertTrue(bot._needs_tick_feed())

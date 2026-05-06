@@ -649,8 +649,15 @@ class DerivBot:
     def _adaptive_pair(self) -> str:
         return (self.config.adaptive_pair or "Over/Under").strip()
 
+    def _is_digit_strategy(self, strategy: str = None) -> bool:
+        strategy = strategy or self.config.selected_strategy
+        return strategy in ["Over 1-3", "Under 6-8", "Even", "Odd", "OVER", "UNDER", "EVEN", "ODD"]
+
+    def _is_digit_contract(self, contract_type: str) -> bool:
+        return str(contract_type or "").startswith("DIGIT")
+
     def _needs_tick_feed(self) -> bool:
-        return self.config.selected_strategy in ["Over 1-3", "Under 6-8", "Even", "Odd"] or (
+        return self._is_digit_strategy() or (
             self.adaptive_mode and self._adaptive_pair() in ["Over/Under", "Even/Odd"]
         )
 
@@ -698,6 +705,30 @@ class DerivBot:
             signal, _ = StrategySignals.even_odd_signal(self.digit_analyzer)
             return signal
         return TradeSignal.NEUTRAL
+
+    async def ensure_market_feeds(self):
+        if not self._is_ws_open():
+            return
+        if self._needs_tick_feed():
+            tick_sub = await self._send({"ticks": self.config.symbol, "subscribe": 1})
+            if 'error' in tick_sub:
+                self.log_message(f"Tick subscription failed: {tick_sub['error']['message']}", "ERROR")
+            else:
+                self.log_message(f"Subscribed to {self.config.symbol} ticks")
+        if self._needs_candle_feed():
+            granularity = self.config.granularity_seconds
+            sub = await self._send({
+                "ticks_history": self.config.symbol,
+                "granularity": granularity,
+                "style": "candles",
+                "subscribe": 1,
+                "count": 100,
+                "end": "latest"
+            })
+            if 'error' in sub:
+                self.log_message(f"Candle subscription failed: {sub['error']['message']}", "ERROR")
+            else:
+                self.log_message(f"Subscribed to {self.config.symbol} {granularity}s candles")
 
     async def reset_martingale(self):
         """Reset martingale state and ignore the result of the current in‑progress trade."""
@@ -1145,7 +1176,7 @@ class DerivBot:
                 return
             self.log_message(f"Stake reduced to available balance: {stake:.2f}", "WARN")
 
-        if self.config.selected_strategy in ["Over 1-3", "Under 6-8", "Even", "Odd"]:
+        if self._is_digit_contract(contract_type):
             duration_unit = "t"
             duration_value = self._choose_tick_duration(signal)
         else:
@@ -1460,12 +1491,8 @@ class DerivBot:
 
             await self.get_open_positions(subscribe=True)
 
-            if self.config.selected_strategy in ["Over 1-3", "Under 6-8", "Even", "Odd"]:
-                tick_sub = await self._send({"ticks": self.config.symbol, "subscribe": 1})
-                if 'error' in tick_sub:
-                    self.log_message(f"Tick subscription failed: {tick_sub['error']['message']}", "ERROR")
-                    return False
-                self.log_message(f"Subscribed to {self.config.symbol} ticks")
+            if self._is_digit_strategy():
+                await self.ensure_market_feeds()
             else:
                 granularity = self.config.granularity_seconds
                 sub = await self._send({
@@ -1532,27 +1559,7 @@ class DerivBot:
 
                 await self.get_open_positions(subscribe=True)
 
-                if self._needs_tick_feed():
-                    tick_sub = await self._send({"ticks": self.config.symbol, "subscribe": 1})
-                    if 'error' in tick_sub:
-                        self.log_message(f"Tick subscription failed: {tick_sub['error']['message']}", "ERROR")
-                        return False
-                    self.log_message(f"Subscribed to {self.config.symbol} ticks")
-
-                if self._needs_candle_feed():
-                    granularity = self.config.granularity_seconds
-                    sub = await self._send({
-                        "ticks_history": self.config.symbol,
-                        "granularity": granularity,
-                        "style": "candles",
-                        "subscribe": 1,
-                        "count": 100,
-                        "end": "latest"
-                    })
-                    if 'error' in sub:
-                        self.log_message(f"Candle subscription failed: {sub['error']['message']}", "ERROR")
-                        return False
-                    self.log_message(f"Subscribed to {self.config.symbol} {granularity}s candles")
+                await self.ensure_market_feeds()
 
                 self._reconnect_attempts = 0
                 return True
