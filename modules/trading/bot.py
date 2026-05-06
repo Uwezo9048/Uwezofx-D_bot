@@ -87,13 +87,13 @@ class DerivBot:
     def _martingale_confidence(self) -> int:
         """Confidence floor tied to the active martingale loss level."""
         if self.consecutive <= 0:
-            return 65
-        if self.consecutive == 1:
             return 75
-        return 80
+        if self.consecutive == 1:
+            return 80
+        return 85
 
     def _apply_martingale_confidence(self, confidence: float) -> int:
-        return min(80, max(self._martingale_confidence(), int(round(confidence or 0))))
+        return min(85, max(self._martingale_confidence(), int(round(confidence or 0))))
 
     def _is_ws_open(self) -> bool:
         if self.ws is None:
