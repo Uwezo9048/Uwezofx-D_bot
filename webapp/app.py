@@ -839,6 +839,14 @@ def uses_deriv_options_auth(token, app_id):
     return token_text.startswith("pat_") or bool(app_id_text and not app_id_text.isdigit())
 
 
+def app_id_for_token_auth(token, app_id):
+    token = normalize_deriv_token(token)
+    app_id_text = str(app_id or "").strip()
+    if token.lower().startswith("pat_") and app_id_text.isdigit():
+        return str(Settings.DERIV_PAT_APP_ID)
+    return app_id_text
+
+
 async def authorize_legacy_deriv_token(token, app_id):
     url = f"wss://ws.derivws.com/websockets/v3?app_id={app_id}"
     try:
@@ -867,6 +875,7 @@ async def authorize_legacy_deriv_token(token, app_id):
 
 async def authorize_deriv_token(token, app_id, legacy_app_id=None):
     token = normalize_deriv_token(token)
+    app_id = app_id_for_token_auth(token, app_id)
     legacy_app_id = str(legacy_app_id or Settings.DERIV_LEGACY_APP_ID)
     if uses_deriv_options_auth(token, app_id):
         import requests

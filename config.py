@@ -7,6 +7,27 @@ from typing import Optional, Dict, List, Union
 
 load_dotenv()
 
+DEFAULT_DERIV_PAT_APP_ID = "33cqkvVDkguOv3GBkC6OU"
+DEFAULT_DERIV_OAUTH_APP_ID = "33cpZRDi4o4dXSLamujEv"
+DEFAULT_DERIV_LEGACY_APP_ID = "133059"
+
+
+def _clean_env(name: str, default: str = "") -> str:
+    return str(os.getenv(name) or default).strip()
+
+
+def _pat_app_id_from_env() -> str:
+    explicit_pat_app_id = _clean_env("DERIV_PAT_APP_ID")
+    if explicit_pat_app_id:
+        return explicit_pat_app_id
+
+    legacy_name_app_id = _clean_env("DERIV_APP_ID")
+    if legacy_name_app_id and not legacy_name_app_id.isdigit():
+        return legacy_name_app_id
+
+    return DEFAULT_DERIV_PAT_APP_ID
+
+
 class Settings:
     """Global settings from environment"""
     SUPABASE_URL = os.getenv('SUPABASE_URL')
@@ -16,9 +37,9 @@ class Settings:
     AT_USERNAME = os.getenv('AT_USERNAME')
     AT_API_KEY = os.getenv('AT_API_KEY')
     ADMIN_PHONE = os.getenv('ADMIN_PHONE')
-    DERIV_PAT_APP_ID = str(os.getenv('DERIV_PAT_APP_ID') or os.getenv('DERIV_APP_ID') or '133059').strip()
-    DERIV_OAUTH_APP_ID = str(os.getenv('DERIV_OAUTH_APP_ID') or DERIV_PAT_APP_ID).strip()
-    DERIV_LEGACY_APP_ID = str(os.getenv('DERIV_LEGACY_APP_ID') or '133059').strip()
+    DERIV_PAT_APP_ID = _pat_app_id_from_env()
+    DERIV_OAUTH_APP_ID = _clean_env('DERIV_OAUTH_APP_ID', DEFAULT_DERIV_OAUTH_APP_ID)
+    DERIV_LEGACY_APP_ID = _clean_env('DERIV_LEGACY_APP_ID', DEFAULT_DERIV_LEGACY_APP_ID)
     DERIV_APP_ID = DERIV_PAT_APP_ID
 
 @dataclass
