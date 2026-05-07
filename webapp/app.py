@@ -8,10 +8,15 @@ import time
 from collections import deque
 from datetime import timedelta
 from functools import wraps
+from io import BytesIO
 from pathlib import Path
 from urllib.parse import urlencode
 
 from flask import Flask, flash, jsonify, redirect, render_template, request, session, url_for
+try:
+    from flask import send_file
+except ImportError:
+    send_file = None
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 import sys
@@ -678,6 +683,17 @@ class UserBotHub:
 
 user_manager = SupabaseUserManager()
 bot_hub = UserBotHub()
+pairing_links = {}
+pairing_lock = threading.RLock()
+PAIRING_LINK_TTL_SECONDS = 180
+
+
+def cleanup_pairing_links():
+    now = time.time()
+    with pairing_lock:
+        expired = [code for code, item in pairing_links.items() if item.get("expires_at", 0) <= now]
+        for code in expired:
+            pairing_links.pop(code, None)
 
 
 def current_manager():
@@ -1165,6 +1181,76 @@ def deriv_connect_token():
         payload.update({"success": success, "message": message})
         return jsonify(payload), 200 if success else 400
     flash(message, "success" if success else "error")
+    return redirect(url_for("dashboard"))
+
+
+@app.route("/pairing/create", methods=["POST"])
+@login_required
+def create_pairing_link():
+    manager = current_manager()
+    if not manager:
+        return jsonify({"success": False, "message": "Please log in first."}), 401
+    snapshot = manager.snapshot()
+    if not snapshot.get("running"):
+        return jsonify({"success": False, "message": "Start the bot first, then generate the QR code."}), 400
+
+    cleanup_pairing_links()
+    code = secrets.token_urlsafe(24)
+    user = session.get("user", {})
+    with pairing_lock:
+        pairing_links[code] = {
+            "user": user,
+            "expires_at": time.time() + PAIRING_LINK_TTL_SECONDS,
+        }
+    return jsonify(
+        {
+            "success": True,
+            "url": url_for("pair_dashboard", code=code, _external=True),
+            "qr_url": url_for("pairing_qr", code=code),
+            "code": code,
+            "expires_in": PAIRING_LINK_TTL_SECONDS,
+        }
+    )
+
+
+@app.route("/pairing/qr/<code>.png")
+@login_required
+def pairing_qr(code):
+    cleanup_pairing_links()
+    with pairing_lock:
+        pairing = pairing_links.get(str(code or ""))
+    if not pairing:
+        return jsonify({"success": False, "message": "QR pairing link expired or invalid."}), 404
+
+    import qrcode
+
+    image = qrcode.make(url_for("pair_dashboard", code=code, _external=True))
+    buffer = BytesIO()
+    image.save(buffer, format="PNG")
+    buffer.seek(0)
+    if send_file is None:
+        return buffer.getvalue()
+    return send_file(buffer, mimetype="image/png", max_age=0)
+
+
+@app.route("/pair/<code>")
+def pair_dashboard(code):
+    cleanup_pairing_links()
+    with pairing_lock:
+        pairing = pairing_links.pop(str(code or ""), None)
+    if not pairing:
+        flash("QR pairing link expired or invalid. Generate a new QR from the running bot.", "error")
+        return redirect(url_for("login"))
+
+    user = pairing.get("user") or {}
+    if not user:
+        flash("QR pairing failed. Please log in normally.", "error")
+        return redirect(url_for("login"))
+
+    session.permanent = True
+    session["user"] = user
+    bot_hub.get_manager(user)
+    flash("Device paired. You can now control the running bot from this device.", "success")
     return redirect(url_for("dashboard"))
 
 

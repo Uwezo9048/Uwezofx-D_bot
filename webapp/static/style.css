@@ -333,6 +333,7 @@ select:focus {
     align-items: center;
     gap: 14px;
     flex-wrap: wrap;
+    position: relative;
 }
 
 .topbar-actions {
@@ -353,6 +354,122 @@ select:focus {
     height: 38px;
     object-fit: contain;
     flex: 0 0 auto;
+}
+
+.logo-action {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    padding: 3px;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    background: transparent;
+    cursor: pointer;
+}
+
+.logo-action:hover,
+.logo-action:focus-visible {
+    border-color: var(--accent-primary);
+    outline: none;
+}
+
+.pairing-menu {
+    position: absolute;
+    top: 50px;
+    left: 0;
+    z-index: 30;
+    display: grid;
+    min-width: 150px;
+    padding: 8px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: rgba(11, 17, 26, 0.98);
+    box-shadow: 0 18px 34px rgba(0, 0, 0, 0.36);
+}
+
+.pairing-menu button {
+    width: 100%;
+    padding: 10px 12px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--text-primary);
+    cursor: pointer;
+    text-align: left;
+    font-weight: 700;
+}
+
+.pairing-menu button:hover {
+    background: rgba(56, 189, 248, 0.14);
+}
+
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    display: grid;
+    place-items: center;
+    padding: 18px;
+    background: rgba(5, 7, 11, 0.78);
+}
+
+.modal-panel {
+    position: relative;
+    width: min(100%, 430px);
+    padding: 22px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg-card);
+    box-shadow: 0 24px 52px rgba(0, 0, 0, 0.46);
+}
+
+.modal-close {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    width: 34px;
+    height: 34px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg-sidebar);
+    color: var(--text-primary);
+    cursor: pointer;
+    font-weight: 800;
+}
+
+.pairing-view {
+    display: grid;
+    gap: 12px;
+}
+
+.qr-box {
+    display: grid;
+    place-items: center;
+    min-height: 240px;
+    padding: 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: #ffffff;
+}
+
+.qr-box img {
+    width: 220px;
+    height: 220px;
+}
+
+.qr-video {
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg-sidebar);
+    object-fit: cover;
+}
+
+.manual-pair-field {
+    margin-top: 4px;
 }
 
 .timeout-form {

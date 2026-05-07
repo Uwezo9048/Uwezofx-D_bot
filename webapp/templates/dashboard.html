@@ -3,7 +3,13 @@
 {% block content %}
 <header class="topbar">
     <div class="topbar-brand">
-        <img src="{{ url_for('static', filename='images/icon.png') }}" alt="UWEZO-FX logo" class="topbar-logo">
+        <button id="pairing-menu-toggle" class="logo-action" type="button" aria-label="Open QR pairing">
+            <img src="{{ url_for('static', filename='images/icon.png') }}" alt="UWEZO-FX logo" class="topbar-logo">
+        </button>
+        <div id="pairing-menu" class="pairing-menu is-hidden">
+            <button id="show-pair-qr" type="button">Show QR</button>
+            <button id="start-qr-scanner" type="button">Scan QR</button>
+        </div>
         <div class="brand-mark brand-mark-small">UWEZO-FX DERIV BOT</div>
         <form class="timeout-form" method="post" action="{{ url_for('set_dashboard_timeout') }}">
             <label class="timeout-field">
@@ -381,6 +387,28 @@
         </section>
     </section>
 </main>
+
+<div id="pairing-modal" class="modal-overlay is-hidden" role="dialog" aria-modal="true" aria-labelledby="pairing-modal-title">
+    <div class="modal-panel pairing-panel">
+        <button id="close-pairing-modal" class="modal-close" type="button" aria-label="Close">x</button>
+        <h2 id="pairing-modal-title">Device Pairing</h2>
+        <p id="pairing-modal-copy" class="muted">Generate a QR from the running bot, then scan it on another device to control this dashboard.</p>
+        <div id="pairing-qr-view" class="pairing-view is-hidden">
+            <div id="pairing-qr-box" class="qr-box"></div>
+            <p id="pairing-expiry" class="field-hint"></p>
+            <a id="pairing-link" class="btn btn-info" href="#" target="_blank" rel="noopener">Open Pairing Link</a>
+        </div>
+        <div id="pairing-scanner-view" class="pairing-view is-hidden">
+            <video id="qr-video" class="qr-video" playsinline muted></video>
+            <p id="scanner-status" class="field-hint">Camera scanner opens here when supported by this browser.</p>
+            <label class="field-row field-row-wide manual-pair-field">
+                <span>Paste scanned link or code</span>
+                <input id="manual-pair-code" type="text" autocomplete="off" placeholder="Paste pairing link or QR code">
+            </label>
+            <button id="manual-pair-submit" class="btn btn-primary" type="button">Connect Device</button>
+        </div>
+    </div>
+</div>
 
 <div id="advisory-toast" class="advisory-toast" aria-live="polite" aria-atomic="true"></div>
 
@@ -886,7 +914,158 @@
         }
     }
 
+    function setupPairingControls() {
+        const menuToggle = document.getElementById("pairing-menu-toggle");
+        const menu = document.getElementById("pairing-menu");
+        const modal = document.getElementById("pairing-modal");
+        const closeModal = document.getElementById("close-pairing-modal");
+        const qrView = document.getElementById("pairing-qr-view");
+        const scannerView = document.getElementById("pairing-scanner-view");
+        const qrBox = document.getElementById("pairing-qr-box");
+        const pairingLink = document.getElementById("pairing-link");
+        const pairingExpiry = document.getElementById("pairing-expiry");
+        const scannerStatus = document.getElementById("scanner-status");
+        const qrVideo = document.getElementById("qr-video");
+        const manualPairCode = document.getElementById("manual-pair-code");
+        let scannerStream = null;
+        let scannerTimer = null;
+
+        const stopScanner = () => {
+            if (scannerTimer) {
+                clearInterval(scannerTimer);
+                scannerTimer = null;
+            }
+            if (scannerStream) {
+                scannerStream.getTracks().forEach((track) => track.stop());
+                scannerStream = null;
+            }
+            if (qrVideo) {
+                qrVideo.srcObject = null;
+            }
+        };
+
+        const openModal = (mode) => {
+            modal?.classList.remove("is-hidden");
+            menu?.classList.add("is-hidden");
+            qrView?.classList.toggle("is-hidden", mode !== "qr");
+            scannerView?.classList.toggle("is-hidden", mode !== "scanner");
+            if (mode !== "scanner") {
+                stopScanner();
+            }
+        };
+
+        const closePairingModal = () => {
+            stopScanner();
+            modal?.classList.add("is-hidden");
+        };
+
+        const normalizePairingTarget = (value) => {
+            const text = (value || "").trim();
+            if (!text) {
+                return "";
+            }
+            if (/^https?:\/\//i.test(text)) {
+                return text;
+            }
+            return `/pair/${encodeURIComponent(text)}`;
+        };
+
+        const connectPairingTarget = (value) => {
+            const target = normalizePairingTarget(value);
+            if (!target) {
+                showFlash("Paste a pairing link or code first.", "error");
+                return;
+            }
+            window.location.href = target;
+        };
+
+        const generatePairingQr = async () => {
+            openModal("qr");
+            qrBox.textContent = "Generating QR...";
+            pairingExpiry.textContent = "";
+            pairingLink.href = "#";
+            try {
+                const response = await fetch("{{ url_for('create_pairing_link') }}", {
+                    method: "POST",
+                    headers: {"X-Requested-With": "fetch"},
+                });
+                const data = await response.json();
+                if (!response.ok) {
+                    qrBox.textContent = "";
+                    showFlash(data.message || "Could not generate pairing QR.", "error");
+                    return;
+                }
+                qrBox.innerHTML = "";
+                const image = document.createElement("img");
+                image.alt = "Pairing QR code";
+                image.src = data.qr_url;
+                qrBox.append(image);
+                pairingLink.href = data.url;
+                pairingExpiry.textContent = `Expires in ${Math.round((data.expires_in || 180) / 60)} minutes. Keep this QR private.`;
+            } catch (error) {
+                console.error("Pairing QR failed", error);
+                qrBox.textContent = "";
+                showFlash("Could not generate pairing QR.", "error");
+            }
+        };
+
+        const startScanner = async () => {
+            openModal("scanner");
+            if (!("BarcodeDetector" in window)) {
+                scannerStatus.textContent = "This browser cannot scan QR codes directly. Use your camera app, then paste the link or code here.";
+                return;
+            }
+            if (!navigator.mediaDevices?.getUserMedia) {
+                scannerStatus.textContent = "Camera access is not available here. Paste the pairing link or code below.";
+                return;
+            }
+            try {
+                const detector = new BarcodeDetector({formats: ["qr_code"]});
+                scannerStream = await navigator.mediaDevices.getUserMedia({video: {facingMode: "environment"}});
+                qrVideo.srcObject = scannerStream;
+                await qrVideo.play();
+                scannerStatus.textContent = "Point the camera at the running bot QR code.";
+                scannerTimer = setInterval(async () => {
+                    try {
+                        const codes = await detector.detect(qrVideo);
+                        if (codes.length && codes[0].rawValue) {
+                            stopScanner();
+                            connectPairingTarget(codes[0].rawValue);
+                        }
+                    } catch (error) {
+                        return;
+                    }
+                }, 700);
+            } catch (error) {
+                console.error("QR scanner failed", error);
+                scannerStatus.textContent = "Camera scanner could not start. Paste the pairing link or code below.";
+            }
+        };
+
+        menuToggle?.addEventListener("click", (event) => {
+            event.stopPropagation();
+            menu?.classList.toggle("is-hidden");
+        });
+        document.addEventListener("click", (event) => {
+            if (!menu?.contains(event.target) && !event.target.closest?.("#pairing-menu-toggle")) {
+                menu?.classList.add("is-hidden");
+            }
+        });
+        document.getElementById("show-pair-qr")?.addEventListener("click", generatePairingQr);
+        document.getElementById("start-qr-scanner")?.addEventListener("click", startScanner);
+        closeModal?.addEventListener("click", closePairingModal);
+        modal?.addEventListener("click", (event) => {
+            if (event.target === modal) {
+                closePairingModal();
+            }
+        });
+        document.getElementById("manual-pair-submit")?.addEventListener("click", () => {
+            connectPairingTarget(manualPairCode?.value || "");
+        });
+    }
+
     setupDashboardTabs();
+    setupPairingControls();
     setupTokenMemory();
     setupIdleLogout();
     setupAsyncActions();

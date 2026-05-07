@@ -4,6 +4,7 @@ numpy
 scipy
 scikit-learn
 Pillow
+qrcode[pil]
 python-dotenv
 requests
 websockets
