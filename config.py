@@ -3,7 +3,7 @@ import os
 import json
 from dotenv import load_dotenv
 from dataclasses import dataclass, field
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Union
 
 load_dotenv()
 
@@ -16,12 +16,12 @@ class Settings:
     AT_USERNAME = os.getenv('AT_USERNAME')
     AT_API_KEY = os.getenv('AT_API_KEY')
     ADMIN_PHONE = os.getenv('ADMIN_PHONE')
-    DERIV_APP_ID = int(os.getenv('DERIV_APP_ID', 133059))
+    DERIV_APP_ID = str(os.getenv('DERIV_APP_ID', '133059')).strip()
 
 @dataclass
 class BotConfig:
     """Trading bot configuration"""
-    app_id: int = Settings.DERIV_APP_ID
+    app_id: Union[str, int] = Settings.DERIV_APP_ID
     symbol: str = "R_100"
     granularity_seconds: int = 60
     base_stake: float = 1.0

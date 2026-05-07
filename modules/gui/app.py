@@ -525,7 +525,9 @@ class DerivUwezoApp:
             return
         self.session_api_token = token
         try:
-            app_id = int(self.app_id_var.get())
+            app_id = self.app_id_var.get().strip()
+            if not app_id:
+                raise ValueError("App ID is required")
             symbol = self.symbol_var.get()
             timeframe_str = self.timeframe_var.get()
             granularity = self.timeframe_options.get(timeframe_str, 60)
@@ -545,6 +547,7 @@ class DerivUwezoApp:
             return
 
         config = BotConfig(
+            app_id=app_id,
             symbol=symbol,
             granularity_seconds=granularity,
             base_stake=base_stake,

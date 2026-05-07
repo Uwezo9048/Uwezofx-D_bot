@@ -779,7 +779,9 @@ class DerivBot:
             raise
 
     def _is_pat_token(self) -> bool:
-        return str(self.token or "").strip().lower().startswith("pat_")
+        token_text = str(self.token or "").strip().lower()
+        app_id_text = str(self.app_id or "").strip()
+        return token_text.startswith("pat_") or bool(app_id_text and not app_id_text.isdigit())
 
     def _pat_headers(self) -> Dict[str, str]:
         return {

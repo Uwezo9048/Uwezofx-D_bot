@@ -382,7 +382,7 @@ class WebBotManager:
             else 5
         )
         return BotConfig(
-            app_id=int(config_values["app_id"]),
+            app_id=str(config_values["app_id"]).strip(),
             symbol=config_values["symbol"],
             granularity_seconds=TIMEFRAME_OPTIONS.get(config_values["timeframe"], 60),
             base_stake=float(config_values["stake"]),
@@ -774,8 +774,30 @@ def parse_deriv_json_response(response):
         return None, body[:200]
 
 
+def deriv_non_json_error_message(response, detail):
+    detail = str(detail or "empty response").strip()
+    if response.status_code == 401:
+        return (
+            f"Deriv rejected this PAT token: HTTP 401: {detail}. "
+            "Generate a fresh PAT token in Deriv, make sure it has trade scope, "
+            "and paste the new token exactly as shown."
+        )
+    return (
+        "Deriv PAT account service returned a non-JSON response "
+        f"(HTTP {response.status_code}: {detail}). "
+        "Make sure DERIV_APP_ID is from a Deriv PAT-type app with trade scope; "
+        "legacy Deriv app IDs cannot be used with PAT tokens."
+    )
+
+
+def uses_deriv_options_auth(token, app_id):
+    token_text = str(token or "").strip().lower()
+    app_id_text = str(app_id or "").strip()
+    return token_text.startswith("pat_") or bool(app_id_text and not app_id_text.isdigit())
+
+
 async def authorize_deriv_token(token, app_id):
-    if str(token or "").strip().lower().startswith("pat_"):
+    if uses_deriv_options_auth(token, app_id):
         import requests
 
         headers = {
@@ -794,14 +816,7 @@ async def authorize_deriv_token(token, app_id):
 
         payload, non_json_detail = parse_deriv_json_response(response)
         if payload is None:
-            return (
-                False,
-                "Deriv PAT account service returned a non-JSON response "
-                f"(HTTP {response.status_code}: {non_json_detail}). "
-                "Make sure DERIV_APP_ID is from a Deriv PAT-type app with trade scope; "
-                "legacy Deriv app IDs cannot be used with PAT tokens.",
-                None,
-            )
+            return False, deriv_non_json_error_message(response, non_json_detail), None
 
         if response.status_code >= 400:
             errors = payload.get("errors") if isinstance(payload, dict) else None

@@ -64,7 +64,13 @@ sys.modules.setdefault(
     ),
 )
 
-from webapp.app import authorize_deriv_token, parse_deriv_json_response
+from webapp.app import (
+    WebBotManager,
+    authorize_deriv_token,
+    deriv_non_json_error_message,
+    parse_deriv_json_response,
+    uses_deriv_options_auth,
+)
 
 
 class FakeResponse:
@@ -106,6 +112,60 @@ class DerivPatAuthorizationTests(unittest.TestCase):
         self.assertIn("HTTP 502", message)
         self.assertIn("PAT-type app", message)
         self.assertNotIn("Expecting value", message)
+
+    def test_pat_authorization_handles_invalid_expired_token_response(self):
+        with patch(
+            "requests.get",
+            return_value=FakeResponse(
+                status_code=401,
+                text="Invalid or expired token",
+                json_error=ValueError("Expecting value: line 1 column 1 (char 0)"),
+            ),
+        ):
+            ok, message, account = asyncio.run(authorize_deriv_token("pat_test", 1234))
+
+        self.assertFalse(ok)
+        self.assertIsNone(account)
+        self.assertIn("Deriv rejected this PAT token", message)
+        self.assertIn("Invalid or expired token", message)
+        self.assertIn("Generate a fresh PAT token", message)
+        self.assertNotIn("legacy Deriv app IDs", message)
+
+    def test_non_json_401_message_prioritizes_token_guidance(self):
+        message = deriv_non_json_error_message(
+            FakeResponse(status_code=401),
+            "Invalid or expired token",
+        )
+
+        self.assertIn("Generate a fresh PAT token", message)
+        self.assertNotIn("legacy Deriv app IDs", message)
+
+    def test_pat_authorization_sends_alphanumeric_app_id(self):
+        with patch(
+            "requests.get",
+            return_value=FakeResponse(
+                status_code=200,
+                payload={"data": {"accounts": [{"account_id": "VRTC123", "currency": "USD"}]}},
+            ),
+        ) as mock_get:
+            ok, message, account = asyncio.run(authorize_deriv_token("up32_test", "33cqkvVDkguOv3GBkC6OU"))
+
+        self.assertTrue(ok)
+        self.assertEqual(message, "Deriv PAT token connected.")
+        self.assertEqual(account["account"], "VRTC123")
+        self.assertEqual(mock_get.call_args.kwargs["headers"]["Deriv-App-ID"], "33cqkvVDkguOv3GBkC6OU")
+
+    def test_alphanumeric_app_id_uses_options_auth_for_non_pat_prefix(self):
+        self.assertTrue(uses_deriv_options_auth("up32_test", "33cqkvVDkguOv3GBkC6OU"))
+        self.assertFalse(uses_deriv_options_auth("up32_test", "133059"))
+
+    def test_web_config_keeps_alphanumeric_app_id(self):
+        manager = WebBotManager()
+        manager.state["config"]["app_id"] = "33cqkvVDkguOv3GBkC6OU"
+
+        config = manager._make_config()
+
+        self.assertEqual(config.app_id, "33cqkvVDkguOv3GBkC6OU")
 
 
 if __name__ == "__main__":
