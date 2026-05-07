@@ -26,7 +26,8 @@ class DerivBot:
     def __init__(self, api_token: str, config: BotConfig, log_callback=None,
                  balance_callback=None, stake_callback=None, signal_callback=None,
                  confidence_callback=None, digit_stats_callback=None, strategy_update_callback=None,
-                 positions_callback=None, trade_history_callback=None, advisory_callback=None):
+                 positions_callback=None, trade_history_callback=None, advisory_callback=None,
+                 mode_callback=None):
         self.token = api_token
         self.config = config
         self.app_id = self._app_id_for_token(config.app_id or Settings.DERIV_APP_ID)
@@ -40,6 +41,7 @@ class DerivBot:
         self.positions_callback = positions_callback
         self.trade_history_callback = trade_history_callback
         self.advisory_callback = advisory_callback
+        self.mode_callback = mode_callback
 
         self.ws = None
         self.req_id = 0
@@ -84,6 +86,7 @@ class DerivBot:
         self.last_strategy_check = 0
 
         self.auto_trade = False
+        self.profit_limit_reached = False
         self.adaptive_mode = bool(config.adaptive_enabled or config.adaptive_mode)
         self.latest_confidence = 0
         self._last_advice_key = None
@@ -662,6 +665,17 @@ class DerivBot:
         self._loop = loop
 
     def set_mode(self, mode: str):
+        if mode == "Auto-Trade" and self.profit_limit_reached:
+            self.auto_trade = False
+            if self.mode_callback:
+                self.mode_callback("Monitor")
+            self.log_message("Maximum profit target already reached. Restart the bot to enable Auto-Trade again.", "WARN")
+            self._publish_advisory(
+                "Maximum profit target already reached. Restart the bot to enable Auto-Trade again.",
+                "MONITOR",
+                self.latest_confidence,
+            )
+            return
         self.auto_trade = mode == "Auto-Trade"
         self.adaptive_mode = bool(self.config.adaptive_enabled or self.config.adaptive_mode)
         if self.log:
@@ -678,6 +692,26 @@ class DerivBot:
                 "AUTO-TRADE READY",
                 0,
             )
+
+    def _max_daily_profit(self) -> float:
+        return max(0.0, self._safe_float(getattr(self.config, "max_daily_profit", 0.0)))
+
+    def _switch_to_monitor_after_profit_target(self):
+        if self.profit_limit_reached:
+            return
+        target = self._max_daily_profit()
+        if target <= 0 or self.daily_pnl < target:
+            return
+        self.profit_limit_reached = True
+        self.auto_trade = False
+        if self.mode_callback:
+            self.mode_callback("Monitor")
+        message = (
+            f"Maximum profit target reached ({self.daily_pnl:.2f}/{target:.2f}). "
+            "Trading is paused in Monitor mode until the bot is restarted."
+        )
+        self.log_message(message, "WARN")
+        self._publish_advisory(message, "MONITOR", self.latest_confidence)
 
     def _adaptive_pair(self) -> str:
         return (self.config.adaptive_pair or "Over/Under").strip()
@@ -1332,6 +1366,10 @@ class DerivBot:
                 self.latest_confidence,
             )
             return
+        max_daily_profit = self._max_daily_profit()
+        if self.profit_limit_reached or (max_daily_profit > 0 and self.daily_pnl >= max_daily_profit):
+            self._switch_to_monitor_after_profit_target()
+            return
 
         contract_map = {
             TradeSignal.BUY: "CALL",
@@ -1467,6 +1505,7 @@ class DerivBot:
 
         self.daily_pnl += profit
         self.log_message(f"Daily P&L: {self.daily_pnl:.2f}")
+        self._switch_to_monitor_after_profit_target()
 
         # Update balance
         bal = await self._send({"balance": 1})

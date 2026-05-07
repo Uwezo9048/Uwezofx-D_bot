@@ -113,6 +113,7 @@ class WebBotManager:
                 "timeframe": "1m",
                 "cooldown": "60",
                 "max_daily_loss": "50.0",
+                "max_daily_profit": "0.0",
                 "martingale_mult": "2.5",
                 "max_martingale_steps": "4",
                 "confirmations": "2",
@@ -189,6 +190,11 @@ class WebBotManager:
     def _update_confidence(self, confidence):
         with self.lock:
             self.state["metrics"]["confidence"] = f"{confidence}%"
+            self._touch()
+
+    def _update_mode_from_bot(self, mode):
+        with self.lock:
+            self.state["config"]["mode"] = str(mode or "Monitor")
             self._touch()
 
     def _update_digits(self, stats_dict):
@@ -408,6 +414,7 @@ class WebBotManager:
             ticks_duration=ticks_duration,
             cooldown=int(config_values["cooldown"]),
             max_daily_loss=float(config_values["max_daily_loss"]),
+            max_daily_profit=float(config_values.get("max_daily_profit", 0) or 0),
             martingale_mult=float(config_values["martingale_mult"]),
             max_martingale_steps=int(config_values["max_martingale_steps"]),
             martingale_mode=config_values["martingale_mode"],
@@ -468,6 +475,7 @@ class WebBotManager:
                 positions_callback=self._update_positions,
                 trade_history_callback=self._update_history,
                 advisory_callback=self._append_advisory,
+                mode_callback=self._update_mode_from_bot,
             )
             self.loop = asyncio.new_event_loop()
             self.bot.set_event_loop(self.loop)
@@ -560,6 +568,11 @@ class WebBotManager:
             bot.config.adaptive_pair = config_values.get("adaptive_pair", "Over/Under")
             bot.config.selected_strategy = config_values.get("strategy", bot.config.selected_strategy)
             bot.set_mode(mode)
+            if mode == "Auto-Trade" and getattr(bot, "profit_limit_reached", False) and not bot.auto_trade:
+                with self.lock:
+                    self.state["config"]["mode"] = "Monitor"
+                    self._touch()
+                return False, "Maximum profit target reached. Restart the bot to enable Auto-Trade again."
             self._append_log(
                 f"Mode changed to: {mode} | Adaptive: {'On' if bot.adaptive_mode else 'Off'} "
                 f"({bot.config.adaptive_pair})"

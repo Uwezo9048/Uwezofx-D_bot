@@ -54,6 +54,7 @@ class BotConfig:
     auto_ticks: bool = False
     cooldown: int = 60
     max_daily_loss: float = 50.0
+    max_daily_profit: float = 0.0
     martingale_mult: float = 2.5
     max_martingale_steps: int = 4
     martingale_mode: str = "Classic"

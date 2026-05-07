@@ -453,6 +453,11 @@ class DerivUwezoApp:
             mode = self.mode_var.get()
             self.bot.set_mode(mode)
 
+    def update_mode_from_bot(self, mode):
+        def apply_mode():
+            self.mode_var.set(mode or "Monitor")
+        self.root.after(0, apply_mode)
+
     def on_manual_contract_change(self, event=None):
         contract = self.manual_contract_var.get()
         self.manual_btn1.pack_forget()
@@ -729,6 +734,7 @@ class DerivUwezoApp:
             duration = int(self.duration_var.get())
             cooldown = int(self.cooldown_var.get())
             max_loss = float(self.max_loss_var.get())
+            max_profit = float(self.max_profit_var.get())
             mult = float(self.mult_var.get())
             max_steps = int(self.max_steps_var.get())
             confirmations = int(self.confirmations_var.get())
@@ -749,6 +755,7 @@ class DerivUwezoApp:
             ticks_duration=ticks_duration,
             cooldown=cooldown,
             max_daily_loss=max_loss,
+            max_daily_profit=max_profit,
             martingale_mult=mult,
             max_martingale_steps=max_steps,
             martingale_mode=martingale_mode,
@@ -766,7 +773,8 @@ class DerivUwezoApp:
                             digit_stats_callback=self.update_digit_stats,
                             strategy_update_callback=self.update_strategy_display,
                             positions_callback=self.update_positions_display,
-                            trade_history_callback=self.update_trade_history)
+                            trade_history_callback=self.update_trade_history,
+                            mode_callback=self.update_mode_from_bot)
         self.loop = asyncio.new_event_loop()
         self.bot.set_event_loop(self.loop)
         initial_mode = self.mode_var.get()
@@ -992,6 +1000,9 @@ class DerivUwezoApp:
 
         self.max_loss_var = tk.StringVar(value="50.0")
         add_label_entry(settings_scroll, "Max Daily Loss:", self.max_loss_var, 8)
+
+        self.max_profit_var = tk.StringVar(value="0.0")
+        add_label_entry(settings_scroll, "Max Daily Profit:", self.max_profit_var, 8)
 
         self.mult_var = tk.StringVar(value="2.5")
         add_label_entry(settings_scroll, "Martingale Mult:", self.mult_var, 6)

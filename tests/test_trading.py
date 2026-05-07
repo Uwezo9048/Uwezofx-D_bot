@@ -61,6 +61,9 @@ class RecordingBot(DerivBot):
         self.balance = 100.0
         self.sent_messages = []
         self.trade_history_refreshes = 0
+        self.profit_result = -0.40
+        self.mode_updates = []
+        self.mode_callback = self.mode_updates.append
 
     async def _send(self, msg):
         self.sent_messages.append(msg)
@@ -87,8 +90,8 @@ class RecordingBot(DerivBot):
                         {
                             "contract_id": "contract-1",
                             "buy_price": 0.40,
-                            "sell_price": 0.00,
-                            "profit_loss": -0.40,
+                            "sell_price": max(0.0, 0.40 + self.profit_result),
+                            "profit_loss": self.profit_result,
                         }
                     ]
                 }
@@ -202,3 +205,18 @@ class StakeAndMartingaleTests(unittest.TestCase):
         proposal = next(msg for msg in bot.sent_messages if "proposal" in msg)
         self.assertEqual(proposal["symbol"], "R_100")
         self.assertNotIn("underlying_symbol", proposal)
+
+    def test_max_daily_profit_switches_to_monitor_until_restart(self):
+        config = BotConfig(base_stake=0.40, max_daily_profit=0.50, selected_strategy="Even")
+        bot = RecordingBot(config)
+        bot.profit_result = 0.60
+
+        with patch("modules.trading.bot.asyncio.sleep", _no_sleep):
+            asyncio.run(bot._place_trade(TradeSignal.EVEN))
+
+        self.assertFalse(bot.auto_trade)
+        self.assertTrue(bot.profit_limit_reached)
+        self.assertEqual(bot.mode_updates[-1], "Monitor")
+        sent_before = len(bot.sent_messages)
+        asyncio.run(bot._place_trade(TradeSignal.EVEN))
+        self.assertFalse(any("proposal" in msg for msg in bot.sent_messages[sent_before:]))
