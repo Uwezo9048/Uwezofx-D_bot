@@ -598,6 +598,31 @@
         }).join("");
     }
 
+    function syncConfigFields(config = {}) {
+        const activeElement = document.activeElement;
+        document.querySelectorAll('input[name], select[name]').forEach((field) => {
+            const name = field.name;
+            if (!name || name === "token" || name === "action" || name === "contract_id" || !(name in config)) {
+                return;
+            }
+            if (field === activeElement && !["checkbox", "radio"].includes(field.type)) {
+                return;
+            }
+            if (field.type === "radio") {
+                field.checked = String(field.value) === String(config[name]);
+                return;
+            }
+            if (field.type === "checkbox") {
+                field.checked = config[name] === true || config[name] === "on" || config[name] === "true";
+                return;
+            }
+            const nextValue = String(config[name] ?? "");
+            if (field.value !== nextValue) {
+                field.value = nextValue;
+            }
+        });
+    }
+
     function applyDashboardData(data) {
         const incomingPositionIds = new Set((data.positions || []).map((row) => String(row.id)).filter(Boolean));
         const hasNewPosition = [...incomingPositionIds].some((id) => !knownPositionIds.has(id));
@@ -613,15 +638,6 @@
             tokenInput.placeholder = "Saved for this session";
             tokenStatus.textContent = "Token saved.";
         }
-        const timeoutInput = document.getElementById("timeout-minutes-input");
-        if (timeoutInput && data.config?.timeout_minutes && document.activeElement !== timeoutInput) {
-            timeoutInput.value = data.config.timeout_minutes;
-        }
-        if (data.config?.mode) {
-            document.querySelectorAll('input[name="mode"]').forEach((input) => {
-                input.checked = input.value === data.config.mode;
-            });
-        }
 
         const historyTotal = document.getElementById("history-total");
         historyTotal.textContent = `Net Profit/Loss: ${data.history_total}`;
@@ -635,6 +651,7 @@
         renderAdvisories(advisories);
         maybeShowLatestAdvisory(advisories);
         renderDerivAccounts(data.deriv_accounts || [], data.config?.deriv_account || "");
+        syncConfigFields(data.config || {});
 
         if (hasNewPosition) {
             playTradeBeep();
@@ -786,6 +803,50 @@
                     showFlash("Mode switch failed. Please press Run Bot.", "error");
                 }
             });
+        });
+    }
+
+    function setupSettingsSync() {
+        const syncableSelector = [
+            'input[name]:not([name="token"]):not([name="action"]):not([name="contract_id"])',
+            'select[name]',
+        ].join(",");
+        let syncTimer = null;
+
+        const submitSettingsSync = async (form) => {
+            if (!form) {
+                return;
+            }
+            try {
+                const response = await fetch("{{ url_for('sync_dashboard_settings') }}", {
+                    method: "POST",
+                    body: new FormData(form),
+                    headers: {"X-Requested-With": "fetch"},
+                });
+                const data = await response.json();
+                if (data.metrics) {
+                    applyDashboardData(data);
+                }
+                if (!response.ok) {
+                    showFlash(data.message || "Setting sync failed.", "error");
+                }
+            } catch (error) {
+                console.error("Setting sync failed", error);
+            }
+        };
+
+        const queueSettingsSync = (field) => {
+            if (!field?.form || field.name === "mode") {
+                return;
+            }
+            if (syncTimer) {
+                clearTimeout(syncTimer);
+            }
+            syncTimer = setTimeout(() => submitSettingsSync(field.form), 250);
+        };
+
+        document.querySelectorAll(syncableSelector).forEach((field) => {
+            field.addEventListener("change", () => queueSettingsSync(field));
         });
     }
 
@@ -1102,6 +1163,7 @@
     setupTokenMemory();
     setupIdleLogout();
     setupAsyncActions();
+    setupSettingsSync();
     ["click", "keydown", "touchstart"].forEach((eventName) => {
         window.addEventListener(eventName, unlockTradeBeep, { once: true, passive: true });
     });

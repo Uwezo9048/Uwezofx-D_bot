@@ -236,6 +236,15 @@ Progressively maximum confidence
         with pairing_lock:
             self.assertEqual(len(pairing_links), 1)
 
+    def test_partial_manual_settings_sync_keeps_adaptive_enabled(self):
+        manager = WebBotManager()
+        manager.state["config"]["adaptive_enabled"] = "on"
+
+        manager.update_config_from_form({"manual_stake": "7"})
+
+        self.assertEqual(manager.state["config"]["manual_stake"], "7")
+        self.assertEqual(manager.state["config"]["adaptive_enabled"], "on")
+
 
 if __name__ == "__main__":
     unittest.main()

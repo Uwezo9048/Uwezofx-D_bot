@@ -318,7 +318,9 @@ class WebBotManager:
                 value = form.get(field)
                 if value is not None:
                     self.state["config"][field] = value.strip()
-            self.state["config"]["adaptive_enabled"] = "on" if form.get("adaptive_enabled") == "on" else ""
+            bot_settings_fields = {"symbol", "strategy", "stake", "mode", "app_id", "adaptive_pair"}
+            if "adaptive_enabled" in form or any(field in form for field in bot_settings_fields):
+                self.state["config"]["adaptive_enabled"] = "on" if form.get("adaptive_enabled") == "on" else ""
             selected_token = self._token_for_selected_account_locked()
             selected_app_id = self._app_id_for_selected_account_locked()
             if selected_token:
@@ -584,6 +586,22 @@ class WebBotManager:
             )
             self._run_coro(bot.ensure_market_feeds(), timeout=10)
         return True, f"Mode set to {mode}."
+
+    def sync_settings(self, form):
+        self.update_config_from_form(form)
+        with self.lock:
+            bot = self.bot
+            try:
+                config = self._make_config()
+            except Exception as exc:
+                return False, f"Settings saved for display, but not applied yet: {exc}"
+            mode = self.state["config"].get("mode", "Monitor")
+        if bot:
+            bot.config = config
+            bot.app_id = bot._app_id_for_token(config.app_id or Settings.DERIV_APP_ID)
+            bot.set_mode(mode)
+            self._append_log("Dashboard settings synced from paired device.")
+        return True, "Settings synced."
 
     def set_timeout(self, timeout_minutes):
         try:
@@ -1356,6 +1374,18 @@ def set_dashboard_timeout():
         return jsonify(payload), 200 if success else 400
     flash(message, "success" if success else "error")
     return redirect(url_for("dashboard"))
+
+
+@app.route("/dashboard/settings-sync", methods=["POST"])
+@login_required
+def sync_dashboard_settings():
+    manager = current_manager()
+    if not manager:
+        return jsonify({"success": False, "message": "Please log in first."}), 401
+    success, message = manager.sync_settings(request.form)
+    payload = manager.snapshot()
+    payload.update({"success": success, "message": message})
+    return jsonify(payload), 200 if success else 400
 
 
 @app.route("/bot/manual-trade", methods=["POST"])
