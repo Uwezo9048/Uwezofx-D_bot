@@ -29,7 +29,7 @@ class DerivBot:
                  positions_callback=None, trade_history_callback=None, advisory_callback=None):
         self.token = api_token
         self.config = config
-        self.app_id = config.app_id or Settings.DERIV_APP_ID
+        self.app_id = self._app_id_for_token(config.app_id or Settings.DERIV_APP_ID)
         self.log = log_callback or print
         self.update_balance = balance_callback
         self.update_stake = stake_callback
@@ -106,6 +106,12 @@ class DerivBot:
                 break
             parts.append(clean)
         return "".join(parts) if parts else token
+
+    def _app_id_for_token(self, app_id) -> str:
+        app_id_text = str(app_id or "").strip()
+        if self._normalized_token().lower().startswith("pat_") and app_id_text.isdigit():
+            return str(Settings.DERIV_PAT_APP_ID)
+        return app_id_text
 
     def _martingale_confidence(self) -> int:
         """Confidence floor tied to the active martingale loss level."""

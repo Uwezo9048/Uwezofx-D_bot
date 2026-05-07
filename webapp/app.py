@@ -301,7 +301,6 @@ class WebBotManager:
 
     def update_config_from_form(self, form):
         with self.lock:
-            self.state["config"]["app_id"] = self._app_id_for_selected_account_locked() or str(Settings.DERIV_APP_ID)
             for field in self.state["config"]:
                 if field == "app_id":
                     continue
@@ -309,6 +308,11 @@ class WebBotManager:
                 if value is not None:
                     self.state["config"][field] = value.strip()
             self.state["config"]["adaptive_enabled"] = "on" if form.get("adaptive_enabled") == "on" else ""
+            selected_token = self._token_for_selected_account_locked()
+            selected_app_id = self._app_id_for_selected_account_locked()
+            if selected_token:
+                self.state["session_token"] = selected_token
+            self.state["config"]["app_id"] = selected_app_id or str(Settings.DERIV_APP_ID)
             self._touch()
 
     def remember_token(self, token):
@@ -326,12 +330,17 @@ class WebBotManager:
             account_id = str(account.get("account", "")).strip()
             if not token or not account_id:
                 continue
+            provided_type = str(account.get("type", "")).strip().title()
+            if provided_type not in {"Demo", "Real"}:
+                account_type = str(account.get("account_type") or account.get("raw_type") or "").lower()
+                is_demo = "demo" in account_type or account_id.upper().startswith(("VRTC", "VR", "DEMO"))
+                provided_type = "Demo" if is_demo else "Real"
             clean_accounts.append(
                 {
                     "token": token,
                     "account": account_id,
                     "currency": str(account.get("currency", "")).strip(),
-                    "type": "Demo" if account_id.upper().startswith("VRTC") else "Real",
+                    "type": provided_type,
                     "auth_app_id": str(account.get("auth_app_id") or Settings.DERIV_APP_ID),
                 }
             )
@@ -423,6 +432,7 @@ class WebBotManager:
                 mode = self.state["config"]["mode"]
                 if bot:
                     bot.config = config
+                    bot.app_id = bot._app_id_for_token(config.app_id or Settings.DERIV_APP_ID)
                     bot.set_mode(mode)
                 self._touch()
                 should_refresh_feeds = bool(bot)
@@ -865,12 +875,16 @@ async def authorize_legacy_deriv_token(token, app_id):
     if not account:
         return False, "Deriv authorized the token, but did not return an account id.", None
 
-    return True, "Deriv token connected.", {
-        "token": token,
-        "account": account,
-        "currency": authorized.get("currency", ""),
-        "auth_app_id": str(app_id),
-    }
+    account_type = "Demo" if str(account).upper().startswith(("VRTC", "VR", "DEMO")) else "Real"
+    return True, "Deriv token connected.", [
+        {
+            "token": token,
+            "account": account,
+            "currency": authorized.get("currency", ""),
+            "type": account_type,
+            "auth_app_id": str(app_id),
+        }
+    ]
 
 
 async def authorize_deriv_token(token, app_id, legacy_app_id=None):
@@ -919,7 +933,7 @@ async def authorize_deriv_token(token, app_id, legacy_app_id=None):
         accounts = extract_pat_accounts(payload, token)
         if not accounts:
             return False, "PAT token was accepted, but no Options trading accounts were returned.", None
-        return True, "Deriv PAT token connected.", accounts[0]
+        return True, "Deriv PAT token connected.", accounts
 
     return await authorize_legacy_deriv_token(token, app_id)
 
@@ -1113,12 +1127,20 @@ def deriv_connect_token():
         flash(message, "error")
         return redirect(url_for("dashboard"))
 
-    success, message, account = asyncio.run(
+    success, message, authorized_accounts = asyncio.run(
         authorize_deriv_token(token, Settings.DERIV_PAT_APP_ID, Settings.DERIV_LEGACY_APP_ID)
     )
     if success:
-        manager.remember_deriv_accounts([account])
-        manager.select_deriv_account(account["account"])
+        accounts = authorized_accounts if isinstance(authorized_accounts, list) else [authorized_accounts]
+        manager.remember_deriv_accounts(accounts)
+        selected_account = request.form.get("deriv_account", "").strip()
+        account_ids = {str(account.get("account", "")).strip() for account in accounts}
+        if selected_account in account_ids:
+            manager.select_deriv_account(selected_account)
+        elif accounts:
+            manager.select_deriv_account(manager.snapshot()["config"].get("deriv_account") or accounts[0]["account"])
+        if len(accounts) > 1:
+            message = f"{message} {len(accounts)} accounts available; choose Demo or Real before running."
     elif "401" in str(message) or "Invalid or expired token" in str(message):
         with manager.lock:
             manager.state["session_token"] = ""
@@ -1148,6 +1170,7 @@ def start_bot():
         flash("Please log in first.", "error")
         return redirect(url_for("login"))
 
+    manager.update_config_from_form(request.form)
     token = normalize_deriv_token(request.form.get("token", "")) or manager.get_session_token()
     if not token:
         if request.headers.get("X-Requested-With") == "fetch":
@@ -1155,7 +1178,6 @@ def start_bot():
         flash("API token is required.", "error")
         return redirect(url_for("dashboard"))
 
-    manager.update_config_from_form(request.form)
     manager.remember_token(token)
     success, message = manager.start_bot(token)
     if request.headers.get("X-Requested-With") == "fetch":

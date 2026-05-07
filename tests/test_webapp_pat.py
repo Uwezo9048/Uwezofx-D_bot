@@ -105,10 +105,10 @@ class DerivPatAuthorizationTests(unittest.TestCase):
                 json_error=ValueError("Expecting value: line 1 column 1 (char 0)"),
             ),
         ):
-            ok, message, account = asyncio.run(authorize_deriv_token("pat_test", 1234))
+            ok, message, accounts = asyncio.run(authorize_deriv_token("pat_test", 1234))
 
         self.assertFalse(ok)
-        self.assertIsNone(account)
+        self.assertIsNone(accounts)
         self.assertIn("non-JSON response", message)
         self.assertIn("HTTP 502", message)
         self.assertIn("PAT-type app", message)
@@ -123,10 +123,10 @@ class DerivPatAuthorizationTests(unittest.TestCase):
                 json_error=ValueError("Expecting value: line 1 column 1 (char 0)"),
             ),
         ):
-            ok, message, account = asyncio.run(authorize_deriv_token("pat_test", 1234))
+            ok, message, accounts = asyncio.run(authorize_deriv_token("pat_test", 1234))
 
         self.assertFalse(ok)
-        self.assertIsNone(account)
+        self.assertIsNone(accounts)
         self.assertIn("Deriv rejected this PAT token", message)
         self.assertIn("Invalid or expired token", message)
         self.assertIn("Generate a fresh PAT token", message)
@@ -141,19 +141,27 @@ class DerivPatAuthorizationTests(unittest.TestCase):
         self.assertIn("Generate a fresh PAT token", message)
         self.assertNotIn("legacy Deriv app IDs", message)
 
-    def test_pat_authorization_sends_alphanumeric_app_id(self):
+    def test_pat_authorization_returns_all_accounts_and_sends_alphanumeric_app_id(self):
         with patch(
             "requests.get",
             return_value=FakeResponse(
                 status_code=200,
-                payload={"data": {"accounts": [{"account_id": "VRTC123", "currency": "USD"}]}},
+                payload={
+                    "data": {
+                        "accounts": [
+                            {"account_id": "VRTC123", "currency": "USD", "account_type": "demo"},
+                            {"account_id": "CR123", "currency": "USD", "account_type": "real"},
+                        ]
+                    }
+                },
             ),
         ) as mock_get:
-            ok, message, account = asyncio.run(authorize_deriv_token("up32_test", "33cqkvVDkguOv3GBkC6OU"))
+            ok, message, accounts = asyncio.run(authorize_deriv_token("up32_test", "33cqkvVDkguOv3GBkC6OU"))
 
         self.assertTrue(ok)
         self.assertEqual(message, "Deriv PAT token connected.")
-        self.assertEqual(account["account"], "VRTC123")
+        self.assertEqual([account["account"] for account in accounts], ["VRTC123", "CR123"])
+        self.assertEqual([account["type"] for account in accounts], ["Demo", "Real"])
         self.assertEqual(mock_get.call_args.kwargs["headers"]["Deriv-App-ID"], "33cqkvVDkguOv3GBkC6OU")
 
     def test_alphanumeric_app_id_uses_options_auth_for_non_pat_prefix(self):
@@ -186,6 +194,32 @@ Progressively maximum confidence
         config = manager._make_config()
 
         self.assertEqual(config.app_id, "33cqkvVDkguOv3GBkC6OU")
+
+    def test_account_dropdown_selection_updates_token_and_app_id(self):
+        manager = WebBotManager()
+        manager.remember_deriv_accounts(
+            [
+                {
+                    "token": "demo-token",
+                    "account": "VRTC123",
+                    "currency": "USD",
+                    "type": "Demo",
+                    "auth_app_id": "oauth-app",
+                },
+                {
+                    "token": "real-token",
+                    "account": "CR123",
+                    "currency": "USD",
+                    "type": "Real",
+                    "auth_app_id": "oauth-app",
+                },
+            ]
+        )
+
+        manager.update_config_from_form({"deriv_account": "CR123"})
+
+        self.assertEqual(manager.get_session_token(), "real-token")
+        self.assertEqual(manager.state["config"]["app_id"], "oauth-app")
 
 
 if __name__ == "__main__":

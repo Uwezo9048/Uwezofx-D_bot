@@ -4,6 +4,7 @@ import threading
 import asyncio
 import queue
 import time
+import json
 from datetime import datetime
 from config import BotConfig, Settings
 from modules.database.supabase_manager import SupabaseUserManager
@@ -32,6 +33,8 @@ class DerivUwezoApp:
         self.log_queue = queue.Queue()
         self.log_text = None
         self.session_api_token = ""
+        self.deriv_accounts = []
+        self.deriv_account_labels = {}
 
         self.logo_image = load_logo()
 
@@ -518,14 +521,205 @@ class DerivUwezoApp:
         if messagebox.askyesno("Confirm Close", f"Close position {contract_id}?"):
             asyncio.run_coroutine_threadsafe(self.bot.close_position(int(contract_id)), self.loop)
 
+    def _normalize_deriv_token(self, token: str) -> str:
+        token = str(token or "").strip()
+        if not token:
+            return ""
+        parts = []
+        for line in token.splitlines():
+            clean = line.strip()
+            if not clean:
+                continue
+            if not clean.replace("_", "").replace("-", "").isalnum():
+                break
+            parts.append(clean)
+        return "".join(parts) if parts else token
+
+    def _uses_deriv_options_auth(self, token: str, app_id: str) -> bool:
+        token_text = self._normalize_deriv_token(token).lower()
+        app_id_text = str(app_id or "").strip()
+        return token_text.startswith("pat_") or bool(app_id_text and not app_id_text.isdigit())
+
+    def _app_id_for_token_auth(self, token: str, app_id: str) -> str:
+        app_id_text = str(app_id or "").strip()
+        if self._normalize_deriv_token(token).lower().startswith("pat_") and app_id_text.isdigit():
+            return str(Settings.DERIV_PAT_APP_ID)
+        return app_id_text or str(Settings.DERIV_APP_ID)
+
+    def _derive_account_type(self, account_id: str, account_type: str = "") -> str:
+        account_text = str(account_id or "").upper()
+        type_text = str(account_type or "").lower()
+        if "demo" in type_text or account_text.startswith(("VRTC", "VR", "DEMO")):
+            return "Demo"
+        return "Real"
+
+    def _account_label(self, account):
+        currency = f" ({account.get('currency')})" if account.get("currency") else ""
+        return f"{account.get('type', 'Real')} - {account.get('account', '')}{currency}"
+
+    def _selected_deriv_account(self):
+        label = self.deriv_account_var.get() if hasattr(self, "deriv_account_var") else ""
+        return self.deriv_account_labels.get(label)
+
+    def _extract_pat_accounts(self, payload, token: str, app_id: str):
+        data = payload.get("data", payload) if isinstance(payload, dict) else payload
+        if isinstance(data, dict):
+            candidates = data.get("accounts") or data.get("items") or data.get("data") or data.get("account")
+        else:
+            candidates = data
+        if isinstance(candidates, dict):
+            candidates = [candidates]
+        accounts = []
+        for item in candidates or []:
+            if not isinstance(item, dict):
+                continue
+            account_id = (
+                item.get("account_id")
+                or item.get("accountId")
+                or item.get("id")
+                or item.get("loginid")
+                or item.get("account")
+            )
+            if not account_id:
+                continue
+            account_id = str(account_id)
+            account_type = item.get("account_type") or item.get("type") or ""
+            accounts.append(
+                {
+                    "token": token,
+                    "account": account_id,
+                    "currency": str(item.get("currency") or item.get("currency_code") or "USD"),
+                    "type": self._derive_account_type(account_id, account_type),
+                    "auth_app_id": str(app_id),
+                }
+            )
+        return accounts
+
+    async def _authorize_legacy_desktop_token(self, token: str, app_id: str):
+        import websockets
+
+        url = f"wss://ws.derivws.com/websockets/v3?app_id={app_id}"
+        async with websockets.connect(url, ping_interval=None, close_timeout=5) as ws:
+            await ws.send(json.dumps({"authorize": token}))
+            response = json.loads(await asyncio.wait_for(ws.recv(), timeout=15))
+        if response.get("error"):
+            raise ValueError(response["error"].get("message", "Deriv rejected this token."))
+        authorized = response.get("authorize") or {}
+        account_id = authorized.get("loginid") or authorized.get("account") or ""
+        if not account_id:
+            raise ValueError("Deriv authorized the token, but did not return an account id.")
+        return [
+            {
+                "token": token,
+                "account": str(account_id),
+                "currency": authorized.get("currency", ""),
+                "type": self._derive_account_type(account_id),
+                "auth_app_id": str(app_id),
+            }
+        ], "Legacy token connected. This token is tied to one account."
+
+    async def _authorize_desktop_token(self, token: str, app_id: str):
+        token = self._normalize_deriv_token(token)
+        app_id = self._app_id_for_token_auth(token, app_id)
+        if self._uses_deriv_options_auth(token, app_id):
+            import requests
+
+            response = requests.get(
+                "https://api.derivws.com/trading/v1/options/accounts",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Deriv-App-ID": str(app_id),
+                    "Content-Type": "application/json",
+                },
+                timeout=15,
+            )
+            try:
+                payload = response.json()
+            except ValueError:
+                payload = {}
+            if response.status_code >= 400:
+                if response.status_code == 401 and not token.lower().startswith("pat_"):
+                    return await self._authorize_legacy_desktop_token(token, Settings.DERIV_LEGACY_APP_ID)
+                errors = payload.get("errors") if isinstance(payload, dict) else None
+                detail = (
+                    errors[0].get("message")
+                    if isinstance(errors, list) and errors and isinstance(errors[0], dict)
+                    else f"HTTP {response.status_code}"
+                )
+                raise ValueError(f"Deriv rejected this PAT token: {detail}")
+            accounts = self._extract_pat_accounts(payload, token, app_id)
+            if not accounts:
+                raise ValueError("PAT token was accepted, but no Options trading accounts were returned.")
+            return accounts, f"PAT token connected. {len(accounts)} account(s) available."
+        return await self._authorize_legacy_desktop_token(token, app_id)
+
+    def connect_deriv_token(self):
+        token = self._normalize_deriv_token(self.token_var.get() or self.session_api_token)
+        if not token:
+            messagebox.showerror("Error", "API Token required")
+            return
+        app_id = self.app_id_var.get().strip()
+        if hasattr(self, "account_status_label") and self.account_status_label.winfo_exists():
+            self.account_status_label.config(text="Checking token...")
+        threading.Thread(target=self._connect_deriv_token_worker, args=(token, app_id), daemon=True).start()
+
+    def _connect_deriv_token_worker(self, token: str, app_id: str):
+        try:
+            accounts, message = asyncio.run(self._authorize_desktop_token(token, app_id))
+            self.root.after(0, lambda: self._finish_deriv_token_connect(token, accounts, message, None))
+        except Exception as exc:
+            self.root.after(0, lambda: self._finish_deriv_token_connect(token, [], str(exc), exc))
+
+    def _finish_deriv_token_connect(self, token: str, accounts, message: str, error):
+        if error:
+            if hasattr(self, "account_status_label") and self.account_status_label.winfo_exists():
+                self.account_status_label.config(text=message)
+            messagebox.showerror("Deriv Token", message)
+            return
+
+        self.session_api_token = token
+        self.deriv_accounts = list(accounts or [])
+        labels = [self._account_label(account) for account in self.deriv_accounts]
+        self.deriv_account_labels = dict(zip(labels, self.deriv_accounts))
+        if hasattr(self, "account_combo") and self.account_combo and self.account_combo.winfo_exists():
+            self.account_combo.config(values=labels, state='readonly' if labels else 'disabled')
+        if labels:
+            preferred = next(
+                (self._account_label(account) for account in self.deriv_accounts if account.get("type") == "Demo"),
+                labels[0],
+            )
+            self.deriv_account_var.set(preferred)
+            self.on_deriv_account_change()
+        if hasattr(self, "account_status_label") and self.account_status_label.winfo_exists():
+            self.account_status_label.config(text=message)
+        self.log(message)
+
+    def on_deriv_account_change(self, event=None):
+        account = self._selected_deriv_account()
+        if not account:
+            return
+        self.session_api_token = account.get("token", "")
+        self.app_id_var.set(account.get("auth_app_id") or str(Settings.DERIV_APP_ID))
+        if self.token_var.get().strip() != self.session_api_token:
+            self.token_var.set(self.session_api_token)
+
     def start_bot(self):
-        token = self.token_var.get().strip() or self.session_api_token
+        submitted_token = self._normalize_deriv_token(self.token_var.get())
+        selected_account = self._selected_deriv_account()
+        if selected_account and (not submitted_token or submitted_token == self._normalize_deriv_token(selected_account.get("token", ""))):
+            token = self._normalize_deriv_token(selected_account.get("token", ""))
+            selected_account_id = selected_account.get("account", "")
+            selected_app_id = selected_account.get("auth_app_id") or self.app_id_var.get().strip()
+        else:
+            token = submitted_token or self.session_api_token
+            selected_account_id = ""
+            selected_app_id = self.app_id_var.get().strip()
         if not token:
             messagebox.showerror("Error", "API Token required")
             return
         self.session_api_token = token
         try:
-            app_id = self.app_id_var.get().strip()
+            app_id = self._app_id_for_token_auth(token, selected_app_id)
             if not app_id:
                 raise ValueError("App ID is required")
             symbol = self.symbol_var.get()
@@ -561,7 +755,8 @@ class DerivUwezoApp:
             confidence_ladder=confidence_ladder,
             confirmations_required=confirmations,
             selected_strategy=strategy,
-            timeframe=timeframe_str
+            timeframe=timeframe_str,
+            deriv_account=selected_account_id
         )
 
         self.bot = DerivBot(token, config,
@@ -756,6 +951,23 @@ class DerivUwezoApp:
         self.token_entry = add_label_entry(settings_scroll, "API Token:", self.token_var, 30, show="*")
         tk.Label(settings_scroll, text="Token stays active until logout.", fg=ModernUI.COLORS['text_muted'],
                  bg=ModernUI.COLORS['bg_card'], font=('Segoe UI', 8)).grid(row=row, column=0, sticky='w', padx=10, pady=(0, 4))
+        row += 1
+
+        connect_frame = tk.Frame(settings_scroll, bg=ModernUI.COLORS['bg_card'])
+        connect_frame.grid(row=row, column=0, sticky='ew', padx=5, pady=2)
+        tk.Label(connect_frame, text="", bg=ModernUI.COLORS['bg_card'], width=LABEL_WIDTH).pack(side='left', padx=(0, 5))
+        connect_btn = ModernUI.create_gradient_button(connect_frame, "CONNECT TOKEN", self.connect_deriv_token, 'primary')
+        connect_btn.pack(side='left', fill='x', expand=True)
+        row += 1
+
+        self.deriv_account_var = tk.StringVar(value="")
+        self.account_combo = add_label_combo(settings_scroll, "Deriv Account:", self.deriv_account_var, [], 24)
+        self.account_combo.config(state='disabled')
+        self.account_combo.bind('<<ComboboxSelected>>', self.on_deriv_account_change)
+        self.account_status_label = tk.Label(settings_scroll, text="PAT can list Demo and Real. Legacy tokens list one account.",
+                                             fg=ModernUI.COLORS['text_muted'], bg=ModernUI.COLORS['bg_card'],
+                                             font=('Segoe UI', 8), wraplength=320, justify='left')
+        self.account_status_label.grid(row=row, column=0, sticky='w', padx=10, pady=(0, 4))
         row += 1
 
         self.show_secrets_var = tk.BooleanVar(value=False)
