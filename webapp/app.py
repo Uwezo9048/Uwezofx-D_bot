@@ -764,6 +764,16 @@ def extract_pat_accounts(payload, token):
     return accounts
 
 
+def parse_deriv_json_response(response):
+    try:
+        return response.json(), ""
+    except ValueError:
+        body = str(getattr(response, "text", "") or "").strip()
+        if not body:
+            return None, "empty response"
+        return None, body[:200]
+
+
 async def authorize_deriv_token(token, app_id):
     if str(token or "").strip().lower().startswith("pat_"):
         import requests
@@ -779,9 +789,19 @@ async def authorize_deriv_token(token, app_id):
                 headers=headers,
                 timeout=15,
             )
-            payload = response.json()
         except Exception as exc:
             return False, f"Could not reach Deriv PAT account service: {exc}", None
+
+        payload, non_json_detail = parse_deriv_json_response(response)
+        if payload is None:
+            return (
+                False,
+                "Deriv PAT account service returned a non-JSON response "
+                f"(HTTP {response.status_code}: {non_json_detail}). "
+                "Make sure DERIV_APP_ID is from a Deriv PAT-type app with trade scope; "
+                "legacy Deriv app IDs cannot be used with PAT tokens.",
+                None,
+            )
 
         if response.status_code >= 400:
             errors = payload.get("errors") if isinstance(payload, dict) else None
