@@ -801,6 +801,22 @@ def normalize_deriv_token(token):
     return "".join(parts) if parts else token
 
 
+def token_source_label(token):
+    token = normalize_deriv_token(token)
+    if not token:
+        return "empty"
+    return "PAT" if token.lower().startswith("pat_") else "classic"
+
+
+def mask_deriv_token(token):
+    token = normalize_deriv_token(token)
+    if not token:
+        return ""
+    if len(token) <= 12:
+        return "*" * len(token)
+    return f"{token[:8]}...{token[-6:]}"
+
+
 def deriv_non_json_error_message(response, detail):
     detail = str(detail or "empty response").strip()
     if response.status_code == 401:
@@ -873,7 +889,10 @@ async def authorize_deriv_token(token, app_id, legacy_app_id=None):
         if payload is None:
             if response.status_code == 401 and not token.lower().startswith("pat_"):
                 return await authorize_legacy_deriv_token(token, legacy_app_id)
-            return False, deriv_non_json_error_message(response, non_json_detail), None
+            message = deriv_non_json_error_message(response, non_json_detail)
+            if response.status_code == 401:
+                message += f" Token used: {mask_deriv_token(token)}. App ID used: {app_id}."
+            return False, message, None
 
         if response.status_code >= 400:
             if response.status_code == 401 and not token.lower().startswith("pat_"):
@@ -884,6 +903,8 @@ async def authorize_deriv_token(token, app_id, legacy_app_id=None):
                 if isinstance(errors, list) and errors and isinstance(errors[0], dict)
                 else f"Deriv rejected this PAT token: HTTP {response.status_code}"
             )
+            if response.status_code == 401:
+                message += f" Token used: {mask_deriv_token(token)}. App ID used: {app_id}."
             return False, message, None
 
         accounts = extract_pat_accounts(payload, token)
@@ -1071,9 +1092,13 @@ def deriv_connect_token():
         flash("Please log in first.", "error")
         return redirect(url_for("login"))
 
-    token = normalize_deriv_token(request.form.get("token", "")) or manager.get_session_token()
+    submitted_token = normalize_deriv_token(request.form.get("token", ""))
+    token = submitted_token
     if not token:
-        message = "Paste a Deriv API token first, then click Connect Token."
+        message = "Paste the new Deriv API token first, then click Connect Token."
+        with manager.lock:
+            manager.state["session_token"] = ""
+            manager._touch()
         if request.headers.get("X-Requested-With") == "fetch":
             return jsonify({"success": False, "message": message}), 400
         flash(message, "error")
@@ -1085,6 +1110,11 @@ def deriv_connect_token():
     if success:
         manager.remember_deriv_accounts([account])
         manager.select_deriv_account(account["account"])
+    elif "401" in str(message) or "Invalid or expired token" in str(message):
+        with manager.lock:
+            manager.state["session_token"] = ""
+            manager._touch()
+    message = f"{message} ({token_source_label(token)} token {mask_deriv_token(token)})"
 
     if request.headers.get("X-Requested-With") == "fetch":
         payload = manager.snapshot()

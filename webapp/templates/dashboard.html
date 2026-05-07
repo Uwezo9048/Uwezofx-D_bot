@@ -688,10 +688,6 @@
             if (apiToken && !formData.get("token")) {
                 formData.set("token", apiToken);
             }
-            if (apiToken) {
-                rememberCurrentToken(apiToken);
-                cacheToken(apiToken);
-            }
             if (submitter?.name) {
                 formData.set(submitter.name, submitter.value);
             }
@@ -704,6 +700,10 @@
             const data = await response.json();
             if (data.metrics) {
                 applyDashboardData(data);
+            }
+            if (response.ok && apiToken && action === "{{ url_for('deriv_connect_token') }}") {
+                rememberCurrentToken(apiToken);
+                cacheToken(apiToken);
             }
             return {response, data};
         }
@@ -723,6 +723,9 @@
                 const {response, data} = await postFormAction(form, action, submitter);
                 if (response.ok && action === "{{ url_for('manual_trade') }}") {
                     playTradeBeep();
+                }
+                if (!response.ok && action === "{{ url_for('deriv_connect_token') }}" && /401|invalid|expired/i.test(data.message || "")) {
+                    clearTokenMemory();
                 }
                 showFlash(data.message || "Action complete.", response.ok ? "success" : "error");
             } catch (error) {
@@ -822,24 +825,18 @@
 
         tokenInput?.addEventListener("input", () => {
             const token = tokenInput.value.trim();
-            if (token) {
-                rememberCurrentToken(token);
-            } else {
+            if (!token) {
                 sessionStorage.removeItem("uwezoCurrentApiToken");
             }
         });
 
         tokenInput?.addEventListener("blur", () => {
-            const token = tokenInput.value.trim();
-            if (token) {
-                cacheToken(token);
-            }
+            return;
         });
 
         tokenSelect?.addEventListener("change", () => {
             if (tokenSelect.value && tokenInput) {
                 tokenInput.value = tokenSelect.value;
-                rememberCurrentToken(tokenSelect.value);
                 tokenSelect.value = "";
             }
         });
@@ -847,6 +844,21 @@
         document.getElementById("logout-link")?.addEventListener("click", () => {
             sessionStorage.removeItem("uwezoCurrentApiToken");
         });
+    }
+
+    function clearTokenMemory() {
+        try {
+            sessionStorage.removeItem("uwezoCurrentApiToken");
+            localStorage.removeItem("uwezoApiTokenCache");
+        } catch (error) {
+            return;
+        }
+        const tokenInput = document.getElementById("api-token-input");
+        if (tokenInput) {
+            tokenInput.value = "";
+            tokenInput.placeholder = "Enter Deriv API token";
+        }
+        renderTokenCache();
     }
 
     async function refreshDashboard() {
