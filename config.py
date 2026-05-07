@@ -18,6 +18,7 @@ class Settings:
     ADMIN_PHONE = os.getenv('ADMIN_PHONE')
     DERIV_PAT_APP_ID = str(os.getenv('DERIV_PAT_APP_ID') or os.getenv('DERIV_APP_ID') or '133059').strip()
     DERIV_OAUTH_APP_ID = str(os.getenv('DERIV_OAUTH_APP_ID') or DERIV_PAT_APP_ID).strip()
+    DERIV_LEGACY_APP_ID = str(os.getenv('DERIV_LEGACY_APP_ID') or '133059').strip()
     DERIV_APP_ID = DERIV_PAT_APP_ID
 
 @dataclass

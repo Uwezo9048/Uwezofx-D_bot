@@ -22,6 +22,8 @@ services:
         sync: false
       - key: DERIV_OAUTH_APP_ID
         sync: false
+      - key: DERIV_LEGACY_APP_ID
+        sync: false
       - key: BREVO_API_KEY
         sync: false
       - key: FROM_EMAIL

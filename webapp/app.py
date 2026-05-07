@@ -301,8 +301,7 @@ class WebBotManager:
 
     def update_config_from_form(self, form):
         with self.lock:
-            # Keep app_id shared across users/services from environment settings.
-            self.state["config"]["app_id"] = str(Settings.DERIV_APP_ID)
+            self.state["config"]["app_id"] = self._app_id_for_selected_account_locked() or str(Settings.DERIV_APP_ID)
             for field in self.state["config"]:
                 if field == "app_id":
                     continue
@@ -333,6 +332,7 @@ class WebBotManager:
                     "account": account_id,
                     "currency": str(account.get("currency", "")).strip(),
                     "type": "Demo" if account_id.upper().startswith("VRTC") else "Real",
+                    "auth_app_id": str(account.get("auth_app_id") or Settings.DERIV_APP_ID),
                 }
             )
         if not clean_accounts:
@@ -345,6 +345,7 @@ class WebBotManager:
                 preferred_demo = next((item for item in clean_accounts if item["type"] == "Demo"), None)
                 self.state["config"]["deriv_account"] = (preferred_demo or clean_accounts[0])["account"]
             self.state["session_token"] = self._token_for_selected_account_locked() or clean_accounts[0]["token"]
+            self.state["config"]["app_id"] = self._app_id_for_selected_account_locked() or str(Settings.DERIV_APP_ID)
             self._touch()
 
     def select_deriv_account(self, account_id):
@@ -356,6 +357,7 @@ class WebBotManager:
                 if account.get("account") == account_id:
                     self.state["config"]["deriv_account"] = account_id
                     self.state["session_token"] = account.get("token", "")
+                    self.state["config"]["app_id"] = account.get("auth_app_id") or str(Settings.DERIV_APP_ID)
                     self._touch()
                     return
 
@@ -364,6 +366,13 @@ class WebBotManager:
         for account in self.state.get("deriv_accounts", []):
             if account.get("account") == selected_account:
                 return account.get("token", "")
+        return ""
+
+    def _app_id_for_selected_account_locked(self):
+        selected_account = self.state["config"].get("deriv_account", "")
+        for account in self.state.get("deriv_accounts", []):
+            if account.get("account") == selected_account:
+                return account.get("auth_app_id", "")
         return ""
 
     def get_session_token(self):
@@ -666,6 +675,7 @@ def extract_deriv_accounts(args):
                 "token": token,
                 "account": args.get(f"acct{index}", "").strip(),
                 "currency": args.get(f"cur{index}", "").strip(),
+                "auth_app_id": str(Settings.DERIV_OAUTH_APP_ID),
             }
         )
     return accounts
@@ -692,6 +702,7 @@ def remember_pending_deriv_accounts(accounts):
                     "token": token,
                     "account": account_id,
                     "currency": str(account.get("currency", "")).strip(),
+                    "auth_app_id": str(account.get("auth_app_id") or Settings.DERIV_APP_ID),
                 }
             )
     if pending_accounts:
@@ -759,6 +770,7 @@ def extract_pat_accounts(payload, token):
                 "account": account_id,
                 "currency": str(item.get("currency") or item.get("currency_code") or "USD"),
                 "type": "Demo" if is_demo else "Real",
+                "auth_app_id": str(Settings.DERIV_PAT_APP_ID),
             }
         )
     return accounts
@@ -811,43 +823,7 @@ def uses_deriv_options_auth(token, app_id):
     return token_text.startswith("pat_") or bool(app_id_text and not app_id_text.isdigit())
 
 
-async def authorize_deriv_token(token, app_id):
-    token = normalize_deriv_token(token)
-    if uses_deriv_options_auth(token, app_id):
-        import requests
-
-        headers = {
-            "Authorization": f"Bearer {token}",
-            "Deriv-App-ID": str(app_id),
-            "Content-Type": "application/json",
-        }
-        try:
-            response = requests.get(
-                "https://api.derivws.com/trading/v1/options/accounts",
-                headers=headers,
-                timeout=15,
-            )
-        except Exception as exc:
-            return False, f"Could not reach Deriv PAT account service: {exc}", None
-
-        payload, non_json_detail = parse_deriv_json_response(response)
-        if payload is None:
-            return False, deriv_non_json_error_message(response, non_json_detail), None
-
-        if response.status_code >= 400:
-            errors = payload.get("errors") if isinstance(payload, dict) else None
-            message = (
-                errors[0].get("message")
-                if isinstance(errors, list) and errors and isinstance(errors[0], dict)
-                else f"Deriv rejected this PAT token: HTTP {response.status_code}"
-            )
-            return False, message, None
-
-        accounts = extract_pat_accounts(payload, token)
-        if not accounts:
-            return False, "PAT token was accepted, but no Options trading accounts were returned.", None
-        return True, "Deriv PAT token connected.", accounts[0]
-
+async def authorize_legacy_deriv_token(token, app_id):
     url = f"wss://ws.derivws.com/websockets/v3?app_id={app_id}"
     try:
         async with websockets.connect(url, ping_interval=None, close_timeout=5) as ws:
@@ -869,7 +845,53 @@ async def authorize_deriv_token(token, app_id):
         "token": token,
         "account": account,
         "currency": authorized.get("currency", ""),
+        "auth_app_id": str(app_id),
     }
+
+
+async def authorize_deriv_token(token, app_id, legacy_app_id=None):
+    token = normalize_deriv_token(token)
+    legacy_app_id = str(legacy_app_id or Settings.DERIV_LEGACY_APP_ID)
+    if uses_deriv_options_auth(token, app_id):
+        import requests
+
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Deriv-App-ID": str(app_id),
+            "Content-Type": "application/json",
+        }
+        try:
+            response = requests.get(
+                "https://api.derivws.com/trading/v1/options/accounts",
+                headers=headers,
+                timeout=15,
+            )
+        except Exception as exc:
+            return False, f"Could not reach Deriv PAT account service: {exc}", None
+
+        payload, non_json_detail = parse_deriv_json_response(response)
+        if payload is None:
+            if response.status_code == 401 and not token.lower().startswith("pat_"):
+                return await authorize_legacy_deriv_token(token, legacy_app_id)
+            return False, deriv_non_json_error_message(response, non_json_detail), None
+
+        if response.status_code >= 400:
+            if response.status_code == 401 and not token.lower().startswith("pat_"):
+                return await authorize_legacy_deriv_token(token, legacy_app_id)
+            errors = payload.get("errors") if isinstance(payload, dict) else None
+            message = (
+                errors[0].get("message")
+                if isinstance(errors, list) and errors and isinstance(errors[0], dict)
+                else f"Deriv rejected this PAT token: HTTP {response.status_code}"
+            )
+            return False, message, None
+
+        accounts = extract_pat_accounts(payload, token)
+        if not accounts:
+            return False, "PAT token was accepted, but no Options trading accounts were returned.", None
+        return True, "Deriv PAT token connected.", accounts[0]
+
+    return await authorize_legacy_deriv_token(token, app_id)
 
 
 def fetch_active_symbols(app_id):
@@ -1057,7 +1079,9 @@ def deriv_connect_token():
         flash(message, "error")
         return redirect(url_for("dashboard"))
 
-    success, message, account = asyncio.run(authorize_deriv_token(token, Settings.DERIV_PAT_APP_ID))
+    success, message, account = asyncio.run(
+        authorize_deriv_token(token, Settings.DERIV_PAT_APP_ID, Settings.DERIV_LEGACY_APP_ID)
+    )
     if success:
         manager.remember_deriv_accounts([account])
         manager.select_deriv_account(account["account"])
