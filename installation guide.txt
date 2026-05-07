@@ -73,7 +73,10 @@ trading parameters.
 
 1. Obtain your Deriv API token:
    - Log into your Deriv.com account.
-   - Go to Settings → API token.
+   - For legacy accounts, open:
+     https://developers.deriv.com/dashboard/tokens/
+   - For old accounts, open:
+     https://app.deriv.com/account/api-token?platform=deriv
    - Create a new token with "trade" and "read" permissions.
    - Copy the token (starts with "xxxxxxxxxxxxxxxxxxxx").
 

@@ -41,15 +41,19 @@
                 </label>
                 <div class="field-row field-row-wide deriv-link-panel">
                     <div>
-                        <span>Simple Token Connect</span>
+                        <span>Click button and choose account</span>
                     </div>
                     <button class="btn btn-primary" type="submit" formaction="{{ url_for('deriv_connect_token') }}">Connect Token</button>
                 </div>
-                <div class="field-row field-row-wide deriv-link-panel">
+                <div class="field-row field-row-wide deriv-link-panel deriv-token-links">
                     <div>
                         <span>Generate Deriv Token</span>
+                        <small class="field-hint">Login to your deriv account in your browser before clicking Generate Token button.</small>
                     </div>
-                    <a class="btn btn-info" href="https://app.deriv.com/account/api-token?platform=deriv" target="_blank" rel="noopener">Generate Token</a>
+                    <div class="deriv-token-actions">
+                        <a class="btn btn-info" href="https://developers.deriv.com/dashboard/tokens/" target="_blank" rel="noopener">Legacy</a>
+                        <a class="btn btn-info" href="https://app.deriv.com/account/api-token?platform=deriv" target="_blank" rel="noopener">Old Account</a>
+                    </div>
                 </div>
                 <label id="deriv-account-row" class="field-row field-row-wide {% if not state.deriv_accounts %}is-hidden{% endif %}">
                     <span>Linked Deriv Account</span>
@@ -60,7 +64,7 @@
                         </option>
                         {% endfor %}
                     </select>
-                    <small class="field-hint">PAT tokens can expose Demo and Real here. Legacy tokens appear as their one authorized account.</small>
+                    <small class="field-hint">Choose Real or Demo account</small>
                 </label>
                 <label class="field-row field-row-wide">
                     <span>Previously Used Token</span>

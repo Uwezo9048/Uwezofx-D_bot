@@ -964,7 +964,10 @@ class DerivUwezoApp:
         self.account_combo = add_label_combo(settings_scroll, "Deriv Account:", self.deriv_account_var, [], 24)
         self.account_combo.config(state='disabled')
         self.account_combo.bind('<<ComboboxSelected>>', self.on_deriv_account_change)
-        self.account_status_label = tk.Label(settings_scroll, text="PAT can list Demo and Real. Legacy tokens list one account.",
+        self.account_status_label = tk.Label(settings_scroll, text=("Generate tokens: legacy accounts use "
+                                                                    "https://developers.deriv.com/dashboard/tokens/; "
+                                                                    "old accounts use "
+                                                                    "https://app.deriv.com/account/api-token?platform=deriv"),
                                              fg=ModernUI.COLORS['text_muted'], bg=ModernUI.COLORS['bg_card'],
                                              font=('Segoe UI', 8), wraplength=320, justify='left')
         self.account_status_label.grid(row=row, column=0, sticky='w', padx=10, pady=(0, 4))

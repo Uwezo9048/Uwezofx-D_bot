@@ -148,6 +148,16 @@ label span {
     flex: 0 0 auto;
 }
 
+.deriv-token-links {
+    align-items: flex-start;
+}
+
+.deriv-token-actions {
+    display: flex;
+    flex: 0 0 auto;
+    gap: 8px;
+}
+
 input,
 select {
     width: 100%;
