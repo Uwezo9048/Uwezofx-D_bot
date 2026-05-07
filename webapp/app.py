@@ -397,6 +397,7 @@ class WebBotManager:
             confirmations_required=int(config_values["confirmations"]),
             selected_strategy=strategy,
             timeframe=config_values["timeframe"],
+            deriv_account=config_values.get("deriv_account", ""),
             adaptive_enabled=config_values.get("adaptive_enabled") == "on",
             adaptive_pair=config_values.get("adaptive_pair", "Over/Under"),
         )
@@ -728,7 +729,74 @@ def deriv_callback_url():
     return url_for("deriv_callback", _external=True)
 
 
+def extract_pat_accounts(payload, token):
+    data = payload.get("data", payload) if isinstance(payload, dict) else payload
+    if isinstance(data, dict):
+        candidates = data.get("accounts") or data.get("items") or data.get("data") or data.get("account")
+    else:
+        candidates = data
+    if isinstance(candidates, dict):
+        candidates = [candidates]
+    accounts = []
+    for item in candidates or []:
+        if not isinstance(item, dict):
+            continue
+        account_id = (
+            item.get("account_id")
+            or item.get("accountId")
+            or item.get("id")
+            or item.get("loginid")
+            or item.get("account")
+        )
+        if not account_id:
+            continue
+        account_id = str(account_id)
+        account_type = str(item.get("account_type") or item.get("type") or "").lower()
+        is_demo = "demo" in account_type or account_id.upper().startswith(("VRTC", "VR", "DEMO"))
+        accounts.append(
+            {
+                "token": token,
+                "account": account_id,
+                "currency": str(item.get("currency") or item.get("currency_code") or "USD"),
+                "type": "Demo" if is_demo else "Real",
+            }
+        )
+    return accounts
+
+
 async def authorize_deriv_token(token, app_id):
+    if str(token or "").strip().lower().startswith("pat_"):
+        import requests
+
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Deriv-App-ID": str(app_id),
+            "Content-Type": "application/json",
+        }
+        try:
+            response = requests.get(
+                "https://api.derivws.com/trading/v1/options/accounts",
+                headers=headers,
+                timeout=15,
+            )
+            payload = response.json()
+        except Exception as exc:
+            return False, f"Could not reach Deriv PAT account service: {exc}", None
+
+        if response.status_code >= 400:
+            errors = payload.get("errors") if isinstance(payload, dict) else None
+            message = (
+                errors[0].get("message")
+                if isinstance(errors, list) and errors and isinstance(errors[0], dict)
+                else f"Deriv rejected this PAT token: HTTP {response.status_code}"
+            )
+            return False, message, None
+
+        accounts = extract_pat_accounts(payload, token)
+        if not accounts:
+            return False, "PAT token was accepted, but no Options trading accounts were returned.", None
+        return True, "Deriv PAT token connected.", accounts[0]
+
     url = f"wss://ws.derivws.com/websockets/v3?app_id={app_id}"
     try:
         async with websockets.connect(url, ping_interval=None, close_timeout=5) as ws:

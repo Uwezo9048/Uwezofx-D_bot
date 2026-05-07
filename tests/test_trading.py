@@ -12,6 +12,7 @@ sys.modules.setdefault(
         ConnectionClosedError=ConnectionError,
     ),
 )
+sys.modules.setdefault("requests", types.SimpleNamespace(request=None, get=None))
 
 class _TradeSignal:
     BUY = "BUY"

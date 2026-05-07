@@ -7,6 +7,7 @@ import os
 import time
 import platform
 import sys
+import requests
 import websockets
 from typing import Optional, List, Dict, Any
 from datetime import datetime
@@ -777,6 +778,93 @@ class DerivBot:
             self.pending.pop(msg['req_id'], None)
             raise
 
+    def _is_pat_token(self) -> bool:
+        return str(self.token or "").strip().lower().startswith("pat_")
+
+    def _pat_headers(self) -> Dict[str, str]:
+        return {
+            "Authorization": f"Bearer {self.token}",
+            "Deriv-App-ID": str(self.app_id),
+            "Content-Type": "application/json",
+        }
+
+    def _pat_rest_request(self, method: str, path: str, **kwargs) -> Dict[str, Any]:
+        url = f"https://api.derivws.com{path}"
+        resp = requests.request(method, url, headers=self._pat_headers(), timeout=15, **kwargs)
+        try:
+            payload = resp.json()
+        except ValueError:
+            payload = {}
+        if resp.status_code >= 400:
+            message = self._pat_error_message(payload) or f"HTTP {resp.status_code}"
+            raise ConnectionError(message)
+        return payload
+
+    def _pat_error_message(self, payload: Dict[str, Any]) -> str:
+        errors = payload.get("errors") if isinstance(payload, dict) else None
+        if isinstance(errors, list) and errors:
+            return str(errors[0].get("message") or errors[0].get("code") or "PAT request failed")
+        error = payload.get("error") if isinstance(payload, dict) else None
+        if isinstance(error, dict):
+            return str(error.get("message") or error.get("code") or "PAT request failed")
+        return ""
+
+    def _extract_pat_accounts(self, payload: Dict[str, Any]) -> List[Dict[str, Any]]:
+        data = payload.get("data", payload) if isinstance(payload, dict) else payload
+        if isinstance(data, dict):
+            candidates = data.get("accounts") or data.get("items") or data.get("data") or data.get("account")
+        else:
+            candidates = data
+        if isinstance(candidates, dict):
+            candidates = [candidates]
+        accounts = []
+        for item in candidates or []:
+            if not isinstance(item, dict):
+                continue
+            account_id = (
+                item.get("account_id")
+                or item.get("accountId")
+                or item.get("id")
+                or item.get("loginid")
+                or item.get("account")
+            )
+            if not account_id:
+                continue
+            account_id = str(account_id)
+            account_type = str(item.get("account_type") or item.get("type") or "").lower()
+            is_demo = "demo" in account_type or account_id.upper().startswith(("VRTC", "VR", "DEMO"))
+            accounts.append(
+                {
+                    "account": account_id,
+                    "currency": str(item.get("currency") or item.get("currency_code") or "USD"),
+                    "type": "Demo" if is_demo else "Real",
+                    "raw": item,
+                }
+            )
+        return accounts
+
+    def _select_pat_account(self, accounts: List[Dict[str, Any]]) -> Dict[str, Any]:
+        selected = str(getattr(self.config, "deriv_account", "") or "").strip()
+        if selected:
+            for account in accounts:
+                if account["account"] == selected:
+                    return account
+        preferred_demo = next((item for item in accounts if item["type"] == "Demo"), None)
+        return preferred_demo or accounts[0]
+
+    def _get_pat_websocket_url(self) -> tuple[str, Dict[str, Any]]:
+        accounts_payload = self._pat_rest_request("GET", "/trading/v1/options/accounts")
+        accounts = self._extract_pat_accounts(accounts_payload)
+        if not accounts:
+            raise ConnectionError("PAT token is valid, but no Options trading account was returned.")
+        account = self._select_pat_account(accounts)
+        otp_payload = self._pat_rest_request("POST", f"/trading/v1/options/accounts/{account['account']}/otp")
+        data = otp_payload.get("data", otp_payload) if isinstance(otp_payload, dict) else {}
+        url = data.get("url") if isinstance(data, dict) else ""
+        if not url:
+            raise ConnectionError("PAT token was accepted, but Deriv did not return a WebSocket URL.")
+        return url, account
+
     def _calculate_confidence(self, signal: str) -> int:
         if signal == TradeSignal.NEUTRAL:
             return 0
@@ -1503,6 +1591,37 @@ class DerivBot:
             self.log_message(f"Manual trade exception: {e}", "ERROR")
 
     async def _connect_and_setup(self) -> bool:
+        if self._is_pat_token():
+            try:
+                ws_url, account = self._get_pat_websocket_url()
+                self.ws = await websockets.connect(
+                    ws_url,
+                    ping_interval=None,
+                    ping_timeout=None,
+                    close_timeout=10,
+                    max_size=2**23,
+                    open_timeout=30
+                )
+                self.log_message(f"PAT WebSocket connected for {account['account']}")
+                self.account_currency = account.get("currency") or self.account_currency
+                self._message_loop_task = asyncio.create_task(self._message_loop())
+                self._ping_task = asyncio.create_task(self._send_pings())
+
+                bal = await self._send({"balance": 1, "subscribe": 1})
+                if 'balance' in bal:
+                    self.balance = float(bal['balance']['balance'])
+                    self.account_currency = bal['balance'].get('currency', self.account_currency)
+                    if self.update_balance:
+                        self.update_balance(self.balance, self.account_currency)
+
+                await self.get_open_positions(subscribe=True)
+                await self.ensure_market_feeds()
+                self._reconnect_attempts = 0
+                return True
+            except Exception as e:
+                self.log_message(f"PAT connection error: {e}", "ERROR")
+                return False
+
         url = f"wss://ws.binaryws.com/websockets/v3?app_id={self.app_id}"
         try:
             self.ws = await websockets.connect(
@@ -1558,6 +1677,37 @@ class DerivBot:
             return False
 
     async def _connect_and_setup_render(self) -> bool:
+        if self._is_pat_token():
+            try:
+                ws_url, account = self._get_pat_websocket_url()
+                self.ws = await websockets.connect(
+                    ws_url,
+                    ping_interval=None,
+                    ping_timeout=None,
+                    close_timeout=10,
+                    max_size=2**23,
+                    open_timeout=30
+                )
+                self.log_message(f"PAT WebSocket connected for {account['account']}")
+                self.account_currency = account.get("currency") or self.account_currency
+                self._message_loop_task = asyncio.create_task(self._message_loop())
+                self._ping_task = asyncio.create_task(self._send_pings())
+
+                bal = await self._send({"balance": 1, "subscribe": 1})
+                if 'balance' in bal:
+                    self.balance = float(bal['balance']['balance'])
+                    self.account_currency = bal['balance'].get('currency', self.account_currency)
+                    if self.update_balance:
+                        self.update_balance(self.balance, self.account_currency)
+
+                await self.get_open_positions(subscribe=True)
+                await self.ensure_market_feeds()
+                self._reconnect_attempts = 0
+                return True
+            except Exception as e:
+                self.log_message(f"PAT connection error: {e}", "ERROR")
+                return False
+
         configured_url = (os.getenv("DERIV_WS_URL") or "").strip()
         endpoints = []
         if configured_url:

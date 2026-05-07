@@ -36,6 +36,7 @@ class BotConfig:
     confirmations_required: int = 2
     selected_strategy: str = "ICT/SMS"
     timeframe: str = "1m"
+    deriv_account: str = ""
     auto_trade: bool = False
     adaptive_mode: bool = False
     adaptive_enabled: bool = False
