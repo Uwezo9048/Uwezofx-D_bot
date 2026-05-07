@@ -67,9 +67,13 @@ sys.modules.setdefault(
 from webapp.app import (
     WebBotManager,
     authorize_deriv_token,
+    create_pairing_link,
     deriv_non_json_error_message,
     normalize_deriv_token,
+    pairing_links,
+    pairing_lock,
     parse_deriv_json_response,
+    session,
     uses_deriv_options_auth,
 )
 
@@ -220,6 +224,17 @@ Progressively maximum confidence
 
         self.assertEqual(manager.get_session_token(), "real-token")
         self.assertEqual(manager.state["config"]["app_id"], "oauth-app")
+
+    def test_pairing_link_can_be_created_before_bot_is_running(self):
+        session.clear()
+        session["user"] = {"id": "pair-user", "username": "Pair User"}
+        with pairing_lock:
+            pairing_links.clear()
+
+        create_pairing_link()
+
+        with pairing_lock:
+            self.assertEqual(len(pairing_links), 1)
 
 
 if __name__ == "__main__":

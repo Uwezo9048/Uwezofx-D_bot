@@ -1190,9 +1190,6 @@ def create_pairing_link():
     manager = current_manager()
     if not manager:
         return jsonify({"success": False, "message": "Please log in first."}), 401
-    snapshot = manager.snapshot()
-    if not snapshot.get("running"):
-        return jsonify({"success": False, "message": "Start the bot first, then generate the QR code."}), 400
 
     cleanup_pairing_links()
     code = secrets.token_urlsafe(24)

@@ -392,7 +392,7 @@
     <div class="modal-panel pairing-panel">
         <button id="close-pairing-modal" class="modal-close" type="button" aria-label="Close">x</button>
         <h2 id="pairing-modal-title">Device Pairing</h2>
-        <p id="pairing-modal-copy" class="muted">Generate a QR from the running bot, then scan it on another device to control this dashboard.</p>
+        <p id="pairing-modal-copy" class="muted">Scan this QR on another device to control this dashboard and every bot feature.</p>
         <div id="pairing-qr-view" class="pairing-view is-hidden">
             <div id="pairing-qr-box" class="qr-box"></div>
             <p id="pairing-expiry" class="field-hint"></p>
@@ -929,6 +929,8 @@
         const manualPairCode = document.getElementById("manual-pair-code");
         let scannerStream = null;
         let scannerTimer = null;
+        let pairingData = null;
+        let pairingRequest = null;
 
         const stopScanner = () => {
             if (scannerTimer) {
@@ -979,33 +981,55 @@
             window.location.href = target;
         };
 
-        const generatePairingQr = async () => {
-            openModal("qr");
+        const renderPairingQr = (data) => {
             qrBox.textContent = "Generating QR...";
             pairingExpiry.textContent = "";
             pairingLink.href = "#";
-            try {
-                const response = await fetch("{{ url_for('create_pairing_link') }}", {
-                    method: "POST",
-                    headers: {"X-Requested-With": "fetch"},
+            if (!data?.qr_url || !data?.url) {
+                return;
+            }
+            qrBox.innerHTML = "";
+            const image = document.createElement("img");
+            image.alt = "Pairing QR code";
+            image.src = `${data.qr_url}?v=${encodeURIComponent(data.code || Date.now())}`;
+            qrBox.append(image);
+            pairingLink.href = data.url;
+            pairingExpiry.textContent = `Expires in ${Math.round((data.expires_in || 180) / 60)} minutes. Keep this QR private.`;
+        };
+
+        const requestPairingLink = async (force = false) => {
+            if (pairingData && !force) {
+                return pairingData;
+            }
+            if (pairingRequest && !force) {
+                return pairingRequest;
+            }
+            pairingRequest = fetch("{{ url_for('create_pairing_link') }}", {
+                method: "POST",
+                headers: {"X-Requested-With": "fetch"},
+            })
+                .then(async (response) => {
+                    const data = await response.json();
+                    if (!response.ok) {
+                        throw new Error(data.message || "Could not prepare pairing QR.");
+                    }
+                    pairingData = data;
+                    return data;
+                })
+                .finally(() => {
+                    pairingRequest = null;
                 });
-                const data = await response.json();
-                if (!response.ok) {
-                    qrBox.textContent = "";
-                    showFlash(data.message || "Could not generate pairing QR.", "error");
-                    return;
-                }
-                qrBox.innerHTML = "";
-                const image = document.createElement("img");
-                image.alt = "Pairing QR code";
-                image.src = data.qr_url;
-                qrBox.append(image);
-                pairingLink.href = data.url;
-                pairingExpiry.textContent = `Expires in ${Math.round((data.expires_in || 180) / 60)} minutes. Keep this QR private.`;
+            return pairingRequest;
+        };
+
+        const generatePairingQr = async () => {
+            openModal("qr");
+            try {
+                renderPairingQr(await requestPairingLink());
             } catch (error) {
                 console.error("Pairing QR failed", error);
                 qrBox.textContent = "";
-                showFlash("Could not generate pairing QR.", "error");
+                showFlash(error.message || "Could not generate pairing QR.", "error");
             }
         };
 
@@ -1024,7 +1048,7 @@
                 scannerStream = await navigator.mediaDevices.getUserMedia({video: {facingMode: "environment"}});
                 qrVideo.srcObject = scannerStream;
                 await qrVideo.play();
-                scannerStatus.textContent = "Point the camera at the running bot QR code.";
+                scannerStatus.textContent = "Point the camera at the account QR code.";
                 scannerTimer = setInterval(async () => {
                     try {
                         const codes = await detector.detect(qrVideo);
@@ -1062,6 +1086,15 @@
         document.getElementById("manual-pair-submit")?.addEventListener("click", () => {
             connectPairingTarget(manualPairCode?.value || "");
         });
+        requestPairingLink().catch((error) => {
+            console.error("Initial pairing QR failed", error);
+        });
+        setInterval(() => {
+            pairingData = null;
+            requestPairingLink(true).catch((error) => {
+                console.error("Pairing QR refresh failed", error);
+            });
+        }, 150000);
     }
 
     setupDashboardTabs();
