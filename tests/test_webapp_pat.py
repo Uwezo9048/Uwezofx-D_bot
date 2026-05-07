@@ -68,6 +68,7 @@ from webapp.app import (
     WebBotManager,
     authorize_deriv_token,
     deriv_non_json_error_message,
+    normalize_deriv_token,
     parse_deriv_json_response,
     uses_deriv_options_auth,
 )
@@ -158,6 +159,25 @@ class DerivPatAuthorizationTests(unittest.TestCase):
     def test_alphanumeric_app_id_uses_options_auth_for_non_pat_prefix(self):
         self.assertTrue(uses_deriv_options_auth("up32_test", "33cqkvVDkguOv3GBkC6OU"))
         self.assertFalse(uses_deriv_options_auth("up32_test", "133059"))
+
+    def test_multiline_token_is_joined_before_notes(self):
+        token = """up32xxt9Z38oEO0
+
+9T9357T6
+
+eTwt0mcPs5C2hky
+
+SLZOTRGQ
+
+
+corrections()
+Progressively maximum confidence
+"""
+
+        self.assertEqual(
+            normalize_deriv_token(token),
+            "up32xxt9Z38oEO09T9357T6eTwt0mcPs5C2hkySLZOTRGQ",
+        )
 
     def test_web_config_keeps_alphanumeric_app_id(self):
         manager = WebBotManager()

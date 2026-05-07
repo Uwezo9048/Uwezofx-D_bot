@@ -18,6 +18,10 @@ services:
         sync: false
       - key: DERIV_APP_ID
         sync: false
+      - key: DERIV_PAT_APP_ID
+        sync: false
+      - key: DERIV_OAUTH_APP_ID
+        sync: false
       - key: BREVO_API_KEY
         sync: false
       - key: FROM_EMAIL

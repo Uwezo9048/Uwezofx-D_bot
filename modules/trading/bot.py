@@ -93,6 +93,20 @@ class DerivBot:
         self.history_report_path = Path("reports") / "trade_history_report.html"
         self.trade_result_cache: Dict[str, Dict[str, Any]] = {}
 
+    def _normalized_token(self) -> str:
+        token = str(self.token or "").strip()
+        if not token:
+            return ""
+        parts = []
+        for line in token.splitlines():
+            clean = line.strip()
+            if not clean:
+                continue
+            if not clean.replace("_", "").replace("-", "").isalnum():
+                break
+            parts.append(clean)
+        return "".join(parts) if parts else token
+
     def _martingale_confidence(self) -> int:
         """Confidence floor tied to the active martingale loss level."""
         ladder_name = getattr(self.config, "confidence_ladder", "75/80/85")
@@ -779,13 +793,13 @@ class DerivBot:
             raise
 
     def _is_pat_token(self) -> bool:
-        token_text = str(self.token or "").strip().lower()
+        token_text = self._normalized_token().lower()
         app_id_text = str(self.app_id or "").strip()
         return token_text.startswith("pat_") or bool(app_id_text and not app_id_text.isdigit())
 
     def _pat_headers(self) -> Dict[str, str]:
         return {
-            "Authorization": f"Bearer {self.token}",
+            "Authorization": f"Bearer {self._normalized_token()}",
             "Deriv-App-ID": str(self.app_id),
             "Content-Type": "application/json",
         }
@@ -1640,7 +1654,7 @@ class DerivBot:
             # Disabled background refresh to avoid rate limits – we refresh after each trade
             # self._trade_history_task = asyncio.create_task(self._refresh_trade_history())
 
-            auth = await self._send({"authorize": self.token})
+            auth = await self._send({"authorize": self._normalized_token()})
             if 'error' in auth:
                 self.log_message(f"Auth failed: {auth['error']['message']}", "ERROR")
                 return False
@@ -1739,7 +1753,7 @@ class DerivBot:
                 self._message_loop_task = asyncio.create_task(self._message_loop())
                 self._ping_task = asyncio.create_task(self._send_pings())
 
-                auth = await self._send({"authorize": self.token})
+                auth = await self._send({"authorize": self._normalized_token()})
                 if 'error' in auth:
                     self.log_message(f"Auth failed: {auth['error']['message']}", "ERROR")
                     return False

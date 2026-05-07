@@ -16,7 +16,9 @@ class Settings:
     AT_USERNAME = os.getenv('AT_USERNAME')
     AT_API_KEY = os.getenv('AT_API_KEY')
     ADMIN_PHONE = os.getenv('ADMIN_PHONE')
-    DERIV_APP_ID = str(os.getenv('DERIV_APP_ID', '133059')).strip()
+    DERIV_PAT_APP_ID = str(os.getenv('DERIV_PAT_APP_ID') or os.getenv('DERIV_APP_ID') or '133059').strip()
+    DERIV_OAUTH_APP_ID = str(os.getenv('DERIV_OAUTH_APP_ID') or DERIV_PAT_APP_ID).strip()
+    DERIV_APP_ID = DERIV_PAT_APP_ID
 
 @dataclass
 class BotConfig:

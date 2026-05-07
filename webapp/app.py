@@ -774,6 +774,21 @@ def parse_deriv_json_response(response):
         return None, body[:200]
 
 
+def normalize_deriv_token(token):
+    token = str(token or "").strip()
+    if not token:
+        return ""
+    parts = []
+    for line in token.splitlines():
+        clean = line.strip()
+        if not clean:
+            continue
+        if not clean.replace("_", "").replace("-", "").isalnum():
+            break
+        parts.append(clean)
+    return "".join(parts) if parts else token
+
+
 def deriv_non_json_error_message(response, detail):
     detail = str(detail or "empty response").strip()
     if response.status_code == 401:
@@ -791,12 +806,13 @@ def deriv_non_json_error_message(response, detail):
 
 
 def uses_deriv_options_auth(token, app_id):
-    token_text = str(token or "").strip().lower()
+    token_text = normalize_deriv_token(token).lower()
     app_id_text = str(app_id or "").strip()
     return token_text.startswith("pat_") or bool(app_id_text and not app_id_text.isdigit())
 
 
 async def authorize_deriv_token(token, app_id):
+    token = normalize_deriv_token(token)
     if uses_deriv_options_auth(token, app_id):
         import requests
 
@@ -991,7 +1007,7 @@ def dashboard():
 @app.route("/deriv/connect")
 @login_required
 def deriv_connect():
-    params = {"app_id": str(Settings.DERIV_APP_ID)}
+    params = {"app_id": str(Settings.DERIV_OAUTH_APP_ID)}
     return redirect(f"https://oauth.deriv.com/oauth2/authorize?{urlencode(params)}")
 
 
@@ -1033,7 +1049,7 @@ def deriv_connect_token():
         flash("Please log in first.", "error")
         return redirect(url_for("login"))
 
-    token = request.form.get("token", "").strip() or manager.get_session_token()
+    token = normalize_deriv_token(request.form.get("token", "")) or manager.get_session_token()
     if not token:
         message = "Paste a Deriv API token first, then click Connect Token."
         if request.headers.get("X-Requested-With") == "fetch":
@@ -1041,7 +1057,7 @@ def deriv_connect_token():
         flash(message, "error")
         return redirect(url_for("dashboard"))
 
-    success, message, account = asyncio.run(authorize_deriv_token(token, Settings.DERIV_APP_ID))
+    success, message, account = asyncio.run(authorize_deriv_token(token, Settings.DERIV_PAT_APP_ID))
     if success:
         manager.remember_deriv_accounts([account])
         manager.select_deriv_account(account["account"])
@@ -1069,7 +1085,7 @@ def start_bot():
         flash("Please log in first.", "error")
         return redirect(url_for("login"))
 
-    token = request.form.get("token", "").strip() or manager.get_session_token()
+    token = normalize_deriv_token(request.form.get("token", "")) or manager.get_session_token()
     if not token:
         if request.headers.get("X-Requested-With") == "fetch":
             return jsonify({"success": False, "message": "API token is required."}), 400
