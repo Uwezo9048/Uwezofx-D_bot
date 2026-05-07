@@ -689,6 +689,31 @@ class DerivBot:
     def _is_digit_contract(self, contract_type: str) -> bool:
         return str(contract_type or "").startswith("DIGIT")
 
+    def _proposal_symbol_field(self) -> str:
+        return "underlying_symbol" if self._is_pat_token() else "symbol"
+
+    def _build_proposal_message(
+        self,
+        contract_type: str,
+        stake: float,
+        duration_value: int,
+        duration_unit: str,
+        barrier: str = None,
+    ) -> Dict[str, Any]:
+        proposal_msg = {
+            "proposal": 1,
+            "amount": stake,
+            "basis": "stake",
+            "contract_type": contract_type,
+            "currency": self.account_currency,
+            "duration": duration_value,
+            "duration_unit": duration_unit,
+            self._proposal_symbol_field(): self.config.symbol,
+        }
+        if barrier:
+            proposal_msg["barrier"] = barrier
+        return proposal_msg
+
     def _needs_tick_feed(self) -> bool:
         return self._is_digit_strategy() or (
             self.adaptive_mode and self._adaptive_pair() in ["Over/Under", "Even/Odd"]
@@ -1340,18 +1365,16 @@ class DerivBot:
         if self.update_stake:
             self.update_stake(stake, self.consecutive)
 
-        proposal_msg = {
-            "proposal": 1,
-            "amount": stake,
-            "basis": "stake",
-            "contract_type": contract_type,
-            "currency": self.account_currency,
-            "duration": duration_value,
-            "duration_unit": duration_unit,
-            "symbol": self.config.symbol
-        }
+        barrier = None
         if contract_type in ["DIGITOVER", "DIGITUNDER"]:
-            proposal_msg["barrier"] = "3" if signal == TradeSignal.OVER else "6"
+            barrier = "3" if signal == TradeSignal.OVER else "6"
+        proposal_msg = self._build_proposal_message(
+            contract_type,
+            stake,
+            duration_value,
+            duration_unit,
+            barrier,
+        )
 
         prop = await self._send(proposal_msg)
         if 'error' in prop:
@@ -1561,18 +1584,13 @@ class DerivBot:
         return rows
 
     async def manual_trade_generic(self, contract_type: str, stake: float, duration_value: int, duration_unit: str, barrier: str = None):
-        proposal_msg = {
-            "proposal": 1,
-            "amount": stake,
-            "basis": "stake",
-            "contract_type": contract_type,
-            "currency": self.account_currency,
-            "duration": duration_value,
-            "duration_unit": duration_unit,
-            "symbol": self.config.symbol
-        }
-        if barrier:
-            proposal_msg["barrier"] = barrier
+        proposal_msg = self._build_proposal_message(
+            contract_type,
+            stake,
+            duration_value,
+            duration_unit,
+            barrier,
+        )
         self.log_message(f"Manual trade: {contract_type} stake {stake:.2f}")
         try:
             prop = await self._send(proposal_msg)

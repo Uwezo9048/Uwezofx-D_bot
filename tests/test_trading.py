@@ -168,3 +168,37 @@ class StakeAndMartingaleTests(unittest.TestCase):
         self.assertEqual(proposal["duration_unit"], "t")
         self.assertEqual(proposal["duration"], 3)
         self.assertTrue(bot._needs_tick_feed())
+
+    def test_pat_proposal_uses_underlying_symbol_field(self):
+        config = BotConfig(
+            app_id="33cqkvVDkguOv3GBkC6OU",
+            symbol="R_100",
+            base_stake=0.40,
+            selected_strategy="Over 1-3",
+            ticks_duration=3,
+        )
+        bot = RecordingBot(config)
+
+        with patch("modules.trading.bot.asyncio.sleep", _no_sleep):
+            asyncio.run(bot._place_trade(TradeSignal.OVER))
+
+        proposal = next(msg for msg in bot.sent_messages if "proposal" in msg)
+        self.assertEqual(proposal["underlying_symbol"], "R_100")
+        self.assertNotIn("symbol", proposal)
+
+    def test_legacy_proposal_keeps_symbol_field(self):
+        config = BotConfig(
+            app_id="133059",
+            symbol="R_100",
+            base_stake=0.40,
+            selected_strategy="Over 1-3",
+            ticks_duration=3,
+        )
+        bot = RecordingBot(config)
+
+        with patch("modules.trading.bot.asyncio.sleep", _no_sleep):
+            asyncio.run(bot._place_trade(TradeSignal.OVER))
+
+        proposal = next(msg for msg in bot.sent_messages if "proposal" in msg)
+        self.assertEqual(proposal["symbol"], "R_100")
+        self.assertNotIn("underlying_symbol", proposal)
