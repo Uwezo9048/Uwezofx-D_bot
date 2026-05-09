@@ -29,6 +29,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from config import BotConfig, Settings
 from modules.database.supabase_manager import SupabaseUserManager
 from modules.trading.bot import DerivBot
+from modules.utils.timezone import format_now
 import websockets
 
 
@@ -132,6 +133,7 @@ class WebBotManager:
                 "manual_duration": "1",
                 "timeout_minutes": "5",
                 "deriv_account": "",
+                "user_timezone": "",
             },
             "session_token": "",
             "deriv_accounts": [],
@@ -161,14 +163,18 @@ class WebBotManager:
 
     def _append_log(self, message):
         with self.lock:
-            self.state["logs"].append(message)
+            text = str(message)
+            if not text.startswith("["):
+                timestamp = format_now("%H:%M:%S", self.state["config"].get("user_timezone", ""))
+                text = f"[{timestamp}] {text}"
+            self.state["logs"].append(text)
             self._touch()
 
     def _append_advisory(self, message, action="HOLD", confidence=0):
         with self.lock:
             self.state["advisories"].append(
                 {
-                    "time": time.strftime("%H:%M:%S"),
+                    "time": format_now("%H:%M:%S", self.state["config"].get("user_timezone", "")),
                     "message": str(message),
                     "action": str(action or "HOLD"),
                     "confidence": int(round(float(confidence or 0))),
@@ -430,6 +436,7 @@ class WebBotManager:
             selected_strategy=strategy,
             timeframe=config_values["timeframe"],
             deriv_account=config_values.get("deriv_account", ""),
+            user_timezone=config_values.get("user_timezone", ""),
             adaptive_enabled=config_values.get("adaptive_enabled") == "on",
             adaptive_pair=config_values.get("adaptive_pair", "Over/Under"),
         )
@@ -614,6 +621,18 @@ class WebBotManager:
             self.state["config"]["timeout_minutes"] = str(timeout_value)
             self._touch()
         return True, f"Timeout set to {timeout_value} minute{'s' if timeout_value != 1 else ''}."
+
+    def set_timezone(self, timezone_name):
+        timezone_name = str(timezone_name or "").strip()
+        if not timezone_name:
+            return False, "Timezone was not detected."
+        with self.lock:
+            self.state["config"]["user_timezone"] = timezone_name
+            bot = self.bot
+            if bot:
+                bot.config.user_timezone = timezone_name
+            self._touch()
+        return True, f"Timezone set to {timezone_name}."
 
     def pause_for_session_timeout(self):
         with self.lock:
@@ -1386,6 +1405,19 @@ def sync_dashboard_settings():
     payload = manager.snapshot()
     payload.update({"success": success, "message": message})
     return jsonify(payload), 200 if success else 400
+
+
+@app.route("/dashboard/timezone", methods=["POST"])
+@login_required
+def set_dashboard_timezone():
+    manager = current_manager()
+    if not manager:
+        return jsonify({"success": False, "message": "Please log in first."}), 401
+    payload = request.get_json(silent=True) or request.form
+    success, message = manager.set_timezone(payload.get("timezone", ""))
+    data = manager.snapshot()
+    data.update({"success": success, "message": message})
+    return jsonify(data), 200 if success else 400
 
 
 @app.route("/bot/manual-trade", methods=["POST"])

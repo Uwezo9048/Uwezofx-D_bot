@@ -975,6 +975,30 @@
         }
     }
 
+    function setupTimezoneDetection() {
+        const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "";
+        if (!timezone) {
+            return;
+        }
+        fetch("{{ url_for('set_dashboard_timezone') }}", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "X-Requested-With": "fetch",
+            },
+            body: JSON.stringify({timezone}),
+        })
+            .then(async (response) => {
+                const data = await response.json();
+                if (response.ok && data.metrics) {
+                    applyDashboardData(data);
+                }
+            })
+            .catch((error) => {
+                console.error("Timezone detection failed", error);
+            });
+    }
+
     function setupPairingControls() {
         const menuToggle = document.getElementById("pairing-menu-toggle");
         const menu = document.getElementById("pairing-menu");
@@ -1159,6 +1183,7 @@
     }
 
     setupDashboardTabs();
+    setupTimezoneDetection();
     setupPairingControls();
     setupTokenMemory();
     setupIdleLogout();

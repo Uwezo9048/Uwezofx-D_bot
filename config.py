@@ -62,6 +62,7 @@ class BotConfig:
     selected_strategy: str = "ICT/SMS"
     timeframe: str = "1m"
     deriv_account: str = ""
+    user_timezone: str = ""
     auto_trade: bool = False
     adaptive_mode: bool = False
     adaptive_enabled: bool = False

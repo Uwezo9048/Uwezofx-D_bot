@@ -13,6 +13,7 @@ from typing import Optional, List, Dict, Any
 from datetime import datetime
 from pathlib import Path
 from config import BotConfig, Settings
+from modules.utils.timezone import format_epoch, format_now
 from modules.trading.indicator import CombinedICTandSMSIndicator, TradeSignal
 from modules.trading.analyzer import MarketAnalyzer
 from modules.trading.strategies import DigitAnalyzer, StrategySignals
@@ -309,16 +310,15 @@ class DerivBot:
         return self._safe_float(fallback)
 
     def _parse_trade_time(self, value) -> str:
-        timestamp = int(self._safe_float(value, 0))
-        if timestamp <= 0:
-            return ""
-        return datetime.fromtimestamp(timestamp).strftime('%Y-%m-%d %H:%M:%S')
+        return format_epoch(value, '%Y-%m-%d %H:%M:%S', getattr(self.config, "user_timezone", ""))
 
     def _format_report_time(self, value) -> str:
-        timestamp = int(self._safe_float(value, 0))
-        if timestamp <= 0:
-            return ""
-        return datetime.utcfromtimestamp(timestamp).strftime('%d %b %Y %H:%M:%S GMT')
+        return format_epoch(
+            value,
+            '%d %b %Y %H:%M:%S',
+            getattr(self.config, "user_timezone", ""),
+            include_tz=True,
+        )
 
     def _derive_statement_market(self, txn: Dict[str, Any]) -> str:
         market = (
@@ -488,7 +488,7 @@ class DerivBot:
             net_pl = sum(self._safe_float(t.get('profit_loss', 0)) for t in trades)
             wins = sum(1 for t in trades if self._safe_float(t.get('profit_loss', 0)) > 0)
             losses = sum(1 for t in trades if self._safe_float(t.get('profit_loss', 0)) < 0)
-            generated_at = datetime.now().strftime('%d %b %Y %H:%M:%S')
+            generated_at = format_now('%d %b %Y %H:%M:%S %Z', getattr(self.config, "user_timezone", ""))
 
             def esc(value) -> str:
                 return html.escape(str(value if value not in (None, "") else "-"))
@@ -836,7 +836,7 @@ class DerivBot:
 
     def log_message(self, msg, level="INFO"):
         if self.log:
-            timestamp = datetime.now().strftime("%H:%M:%S")
+            timestamp = format_now("%H:%M:%S", getattr(self.config, "user_timezone", ""))
             self.log(f"[{timestamp}] {msg}")
 
     def update_confidence_display(self, confidence):

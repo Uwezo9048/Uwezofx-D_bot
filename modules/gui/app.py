@@ -229,7 +229,7 @@ class DerivUwezoApp:
             return "—"
         
         try:
-            from datetime import datetime
+            from datetime import datetime, timezone
             
             # If timestamp is a string, try to parse it
             if isinstance(timestamp, str):
@@ -237,15 +237,17 @@ class DerivUwezoApp:
                 for fmt in ['%Y-%m-%d %H:%M:%S', '%d %b %Y %H:%M:%S GMT', '%Y-%m-%dT%H:%M:%S']:
                     try:
                         dt = datetime.strptime(timestamp, fmt)
-                        return dt.strftime('%d %b %Y %H:%M:%S GMT')
+                        if "GMT" in fmt:
+                            dt = dt.replace(tzinfo=timezone.utc)
+                        return dt.astimezone().strftime('%d %b %Y %H:%M:%S %Z')
                     except ValueError:
                         continue
                 return timestamp
             
             # If timestamp is a number (Unix timestamp)
             if isinstance(timestamp, (int, float)):
-                dt = datetime.fromtimestamp(timestamp)
-                return dt.strftime('%d %b %Y %H:%M:%S GMT')
+                dt = datetime.fromtimestamp(timestamp).astimezone()
+                return dt.strftime('%d %b %Y %H:%M:%S %Z')
             
             return str(timestamp)
         except Exception:
