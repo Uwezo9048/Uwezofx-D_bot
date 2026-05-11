@@ -143,6 +143,15 @@ class StakeAndMartingaleTests(unittest.TestCase):
         self.assertEqual(bot._martingale_confidence(), 85)
         self.assertEqual(bot._apply_martingale_confidence(68), 85)
 
+    def test_eighty_five_confidence_ladder_uses_fixed_eighty_five(self):
+        config = BotConfig(confidence_ladder="85")
+        bot = RecordingBot(config)
+
+        self.assertEqual(bot._martingale_confidence(), 85)
+        bot.consecutive = 2
+        self.assertEqual(bot._martingale_confidence(), 85)
+        self.assertEqual(bot._apply_martingale_confidence(75), 85)
+
     def test_adaptive_runs_separately_from_monitor_mode(self):
         config = BotConfig(adaptive_enabled=True, adaptive_pair="Over/Under")
         bot = RecordingBot(config)

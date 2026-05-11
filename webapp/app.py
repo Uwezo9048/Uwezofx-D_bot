@@ -58,7 +58,10 @@ STRATEGY_OPTIONS = ["ICT/SMS", "Over 1-3", "Under 6-8", "Even", "Odd"]
 MODE_OPTIONS = ["Monitor", "Auto-Trade"]
 ADAPTIVE_PAIR_OPTIONS = ["Over/Under", "Even/Odd", "Buy/Sell"]
 MARTINGALE_OPTIONS = ["Classic", "Reverse"]
-CONFIDENCE_LADDER_OPTIONS = ["75/80/85", "68/75/80"]
+CONFIDENCE_LADDER_OPTIONS = [
+    {"value": "75/80/85", "label": "75/80/85"},
+    {"value": "85", "label": "85"},
+]
 MANUAL_CONTRACT_OPTIONS = [
     "Rise/Fall",
     "Higher/Lower",

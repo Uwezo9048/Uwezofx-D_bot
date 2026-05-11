@@ -1020,8 +1020,8 @@ class DerivUwezoApp:
         confidence_frame.grid(row=row, column=0, columnspan=2, sticky='ew', padx=5, pady=5)
         tk.Label(confidence_frame, text="Confidence Ladder:", fg=ModernUI.COLORS['text_secondary'],
                  bg=ModernUI.COLORS['bg_card'], font=('Segoe UI', 9), width=LABEL_WIDTH, anchor='w').pack(side='left', padx=(0, 5))
-        for ladder in ["75/80/85", "68/75/80"]:
-            rb = tk.Radiobutton(confidence_frame, text=f"{ladder}%", variable=self.confidence_ladder_var, value=ladder,
+        for ladder, label in [("75/80/85", "75/80/85"), ("85", "85")]:
+            rb = tk.Radiobutton(confidence_frame, text=f"{label}%", variable=self.confidence_ladder_var, value=ladder,
                                 fg='white', bg=ModernUI.COLORS['bg_card'], selectcolor=ModernUI.COLORS['bg_sidebar'],
                                 activebackground=ModernUI.COLORS['bg_card'], font=('Segoe UI', 8))
             rb.pack(side='left', padx=5)

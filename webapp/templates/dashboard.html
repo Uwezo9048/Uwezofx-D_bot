@@ -128,8 +128,8 @@
                     <div class="mode-radios compact-radios">
                         {% for option in confidence_ladder_options %}
                         <label class="radio-pill">
-                            <input type="radio" name="confidence_ladder" value="{{ option }}" {% if option == state.config.confidence_ladder %}checked{% endif %}>
-                            <span>{{ option }}%</span>
+                            <input type="radio" name="confidence_ladder" value="{{ option.value }}" {% if option.value == state.config.confidence_ladder or (option.value == "85" and state.config.confidence_ladder == "68/75/80") %}checked{% endif %}>
+                            <span>{{ option.label }}%</span>
                         </label>
                         {% endfor %}
                     </div>
