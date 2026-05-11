@@ -19,7 +19,7 @@ from modules.trading.analyzer import MarketAnalyzer
 from modules.trading.strategies import DigitAnalyzer, StrategySignals
 
 CONFIDENCE_LADDERS = {
-    "68/75/80": (68, 75, 80),
+    "68/75/80": (85, 85, 85),
     "75/80/85": (75, 80, 85),
 }
 
