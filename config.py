@@ -30,13 +30,6 @@ def _pat_app_id_from_env() -> str:
 
 class Settings:
     """Global settings from environment"""
-    SUPABASE_URL = os.getenv('SUPABASE_URL')
-    SUPABASE_KEY = os.getenv('SUPABASE_KEY')
-    BREVO_API_KEY = os.getenv('BREVO_API_KEY')
-    FROM_EMAIL = os.getenv('FROM_EMAIL')
-    AT_USERNAME = os.getenv('AT_USERNAME')
-    AT_API_KEY = os.getenv('AT_API_KEY')
-    ADMIN_PHONE = os.getenv('ADMIN_PHONE')
     DERIV_PAT_APP_ID = _pat_app_id_from_env()
     DERIV_OAUTH_APP_ID = _clean_env('DERIV_OAUTH_APP_ID', DEFAULT_DERIV_OAUTH_APP_ID)
     DERIV_LEGACY_APP_ID = _clean_env('DERIV_LEGACY_APP_ID', DEFAULT_DERIV_LEGACY_APP_ID)

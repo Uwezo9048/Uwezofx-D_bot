@@ -27,7 +27,6 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from config import BotConfig, Settings
-from modules.database.supabase_manager import SupabaseUserManager
 from modules.trading.bot import DerivBot
 from modules.utils.timezone import format_now
 import websockets
@@ -721,11 +720,15 @@ class UserBotHub:
             return self.managers.pop(key, None)
 
 
-user_manager = SupabaseUserManager()
 bot_hub = UserBotHub()
 pairing_links = {}
 pairing_lock = threading.RLock()
 PAIRING_LINK_TTL_SECONDS = 180
+LOCAL_WEB_USER = {
+    "id": "local-web-user",
+    "username": "Trader",
+    "email": "",
+}
 
 
 def cleanup_pairing_links():
@@ -795,6 +798,16 @@ def attach_pending_deriv_accounts(user):
     manager = bot_hub.get_manager(user)
     manager.remember_deriv_accounts(pending_accounts)
     return True
+
+
+def connect_local_web_session():
+    user = dict(LOCAL_WEB_USER)
+    session.permanent = True
+    session["user"] = user
+    linked_deriv = attach_pending_deriv_accounts(user)
+    if not linked_deriv:
+        bot_hub.get_manager(user)
+    return linked_deriv
 
 
 def handle_deriv_token_redirect():
@@ -1057,23 +1070,8 @@ def login():
         return token_redirect
 
     if request.method == "POST":
-        username = request.form.get("username", "").strip()
-        login_code = request.form.get("login_code", "").strip()
-        if not username or not login_code:
-            flash("Username and login code required", "error")
-            return render_template("login.html")
-
-        success, message, user = user_manager.login(username, login_code)
-        if not success:
-            flash(message, "error")
-            return render_template("login.html")
-
-        session.permanent = True
-        session["user"] = user
-        linked_deriv = attach_pending_deriv_accounts(user)
-        if not linked_deriv:
-            bot_hub.get_manager(user)
-        flash("Login successful. Deriv account linked." if linked_deriv else "Login successful.", "success")
+        linked_deriv = connect_local_web_session()
+        flash("Connected. Deriv account linked." if linked_deriv else "Connected.", "success")
         return redirect(url_for("dashboard"))
 
     return render_template("login.html")
@@ -1104,30 +1102,14 @@ def session_timeout():
 
 @app.route("/register", methods=["GET", "POST"])
 def register():
-    if request.method == "POST":
-        success, message = user_manager.register_user(
-            request.form.get("username", "").strip(),
-            request.form.get("email", "").strip(),
-            request.form.get("phone", "").strip(),
-            request.form.get("password", ""),
-        )
-        flash(message, "success" if success else "error")
-        return redirect(url_for("register"))
-
-    return render_template("register.html")
+    flash("Use Connect to open this webapp.", "success")
+    return redirect(url_for("login"))
 
 
 @app.route("/reset-password", methods=["GET", "POST"])
 def reset_password():
-    if request.method == "POST":
-        success, message = user_manager.request_login_code_resend(
-            request.form.get("username", "").strip(),
-            request.form.get("phone", "").strip(),
-        )
-        flash(message, "success" if success else "error")
-        return redirect(url_for("reset_password"))
-
-    return render_template("reset_password.html")
+    flash("Login codes are no longer required for this webapp.", "success")
+    return redirect(url_for("login"))
 
 
 @app.route("/dashboard")

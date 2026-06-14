@@ -39,30 +39,11 @@ If the download does not start automatically, right-click the link and select
 5. After installation, check "Launch UWEZO-Deriv Bot" and click "Finish".
 
 ================================================================================
-4. FIRST RUN – USER REGISTRATION & LOGIN
+4. FIRST RUN - CONNECT
 ================================================================================
 
-The bot uses a Supabase backend for user management. You need to create an
-account (or use an existing one) and log in.
-
-- If you do not have an account:
-  1. On the login screen, click "Create Account".
-  2. Fill in:
-     - Username (at least 3 characters)
-     - Email address (valid)
-     - Phone number (with country code, e.g., +254XXXXXXXXX)
-     - Password (at least 6 characters)
-     - Confirm password
-  3. Click "Register".
-  4. Your account will be pending admin approval.
-  5. You will receive a Login Code via SMS and email once approved.
-  6. Once approved, return to the login screen.
-
-- If you already have an account:
-  1. Enter your Username and the Login Code provided by the admin.
-  2. Click "Login".
-
-After successful login, the main trading dashboard will appear.
+The bot no longer requires a username, login code, or account approval. On the
+first screen, click "Connect" to open the main trading dashboard.
 
 ================================================================================
 5. SET UP THE TRADING BOT

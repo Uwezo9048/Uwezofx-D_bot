@@ -7,9 +7,7 @@ import time
 import json
 from datetime import datetime
 from config import BotConfig, Settings
-from modules.database.supabase_manager import SupabaseUserManager
 from modules.trading.bot import DerivBot
-from modules.gui.login import ModernLoginScreen
 from modules.gui.widgets import ModernUI, ModernCard
 from modules.utils.helpers import set_app_icon, load_logo
 
@@ -22,7 +20,6 @@ class DerivUwezoApp:
         ModernUI.configure_ttk_styles(self.root)
         set_app_icon(self.root)
 
-        self.user_manager = SupabaseUserManager()
         self.current_user = None
         self.is_logged_in = False
         self.ui_active = False  # Flag to prevent updates after logout
@@ -58,7 +55,7 @@ class DerivUwezoApp:
         self.process_log_queue()
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
 
-    # ---------- Login / Registration ----------
+    # ---------- Connect ----------
     def show_login_screen(self):
         self.ui_active = False
         for widget in self.root.winfo_children():
@@ -75,116 +72,21 @@ class DerivUwezoApp:
                  font=('Segoe UI', 15, 'bold'), fg=ModernUI.COLORS['text_primary'], bg=ModernUI.COLORS['bg_card']).pack()
         tk.Label(card.content, text="Deriv market analysis, bot controls, and live account metrics",
                  font=('Segoe UI', 10), fg=ModernUI.COLORS['text_secondary'], bg=ModernUI.COLORS['bg_card']).pack(pady=(4, 0))
-        form = tk.Frame(card.content, bg=ModernUI.COLORS['bg_card'])
-        form.pack(pady=20)
-        tk.Label(form, text="Username", fg=ModernUI.COLORS['text_secondary'], bg=ModernUI.COLORS['bg_card']).grid(row=0, column=0, padx=5, pady=5, sticky='w')
-        self.login_username = tk.Entry(form, width=25, bg=ModernUI.COLORS['bg_sidebar'], fg='white', insertbackground='white', bd=0)
-        self.login_username.grid(row=0, column=1, padx=5, pady=5)
-        ModernUI.add_glow_effect(self.login_username)
-        tk.Label(form, text="Login Code", fg=ModernUI.COLORS['text_secondary'], bg=ModernUI.COLORS['bg_card']).grid(row=1, column=0, padx=5, pady=5, sticky='w')
-        self.login_code = tk.Entry(form, width=25, show="*", bg=ModernUI.COLORS['bg_sidebar'], fg='white', insertbackground='white', bd=0)
-        self.login_code.grid(row=1, column=1, padx=5, pady=5)
-        ModernUI.add_glow_effect(self.login_code)
-
-        self.login_username.bind('<Return>', lambda e: self.login())
-        self.login_code.bind('<Return>', lambda e: self.login())
 
         btn_frame = tk.Frame(card.content, bg=ModernUI.COLORS['bg_card'])
-        btn_frame.pack(pady=10)
-        login_btn = ModernUI.create_gradient_button(btn_frame, "Login", self.login, 'primary')
+        btn_frame.pack(pady=24)
+        login_btn = ModernUI.create_gradient_button(btn_frame, "Connect", self.login, 'primary')
         login_btn.pack(side=tk.LEFT, padx=5)
-        register_btn = ModernUI.create_gradient_button(btn_frame, "Create Account", self.show_register, 'success')
-        register_btn.pack(side=tk.LEFT, padx=5)
-        forgot_btn = ModernUI.create_gradient_button(btn_frame, "Forgot Password?", self.show_password_reset, 'info')
-        forgot_btn.pack(side=tk.LEFT, padx=5)
         self.login_message = tk.Label(card.content, text="", fg=ModernUI.COLORS['accent_danger'], bg=ModernUI.COLORS['bg_card'])
         self.login_message.pack(pady=10)
 
-        self.login_username.focus_set()
+        self.root.bind('<Return>', lambda e: self.login())
 
     def login(self):
-        username = self.login_username.get().strip()
-        code = self.login_code.get().strip()
-        if not username or not code:
-            self.login_message.config(text="Username and login code required")
-            return
-        try:
-            success, msg, user = self.user_manager.login(username, code)
-            if success:
-                self.current_user = user
-                self.is_logged_in = True
-                self.show_main_app()
-            else:
-                self.login_message.config(text=msg)
-        except Exception as e:
-            self.login_message.config(text="Network error. Please check your connection.")
-            print(f"Login error: {e}")
-
-    def show_register(self):
-        win = tk.Toplevel(self.root)
-        win.title("Create Account")
-        win.geometry("450x550")
-        win.configure(bg=ModernUI.COLORS['bg_dark'])
-        win.transient(self.root)
-        win.grab_set()
-        card = ModernCard(win, title="Register")
-        card.pack(fill='both', expand=True, padx=20, pady=20)
-        form = tk.Frame(card.content, bg=ModernUI.COLORS['bg_card'])
-        form.pack(pady=10)
-        fields = [("Username", "reg_username"), ("Email", "reg_email"), ("Phone (+254...)", "reg_phone"), ("Password", "reg_password"), ("Confirm", "reg_confirm")]
-        entries = {}
-        for i, (label, key) in enumerate(fields):
-            tk.Label(form, text=label, fg=ModernUI.COLORS['text_secondary'], bg=ModernUI.COLORS['bg_card']).grid(row=i, column=0, padx=5, pady=5, sticky='w')
-            ent = tk.Entry(form, width=30, bg=ModernUI.COLORS['bg_sidebar'], fg='white', insertbackground='white', bd=0, show="*" if "password" in key else "")
-            ent.grid(row=i, column=1, padx=5, pady=5)
-            ModernUI.add_glow_effect(ent)
-            entries[key] = ent
-        msg_label = tk.Label(card.content, text="", fg=ModernUI.COLORS['accent_danger'], bg=ModernUI.COLORS['bg_card'])
-        msg_label.pack(pady=10)
-        def do_register():
-            username = entries['reg_username'].get().strip()
-            email = entries['reg_email'].get().strip()
-            phone = entries['reg_phone'].get().strip()
-            pwd = entries['reg_password'].get()
-            confirm = entries['reg_confirm'].get()
-            if pwd != confirm:
-                msg_label.config(text="Passwords do not match")
-                return
-            success, msg = self.user_manager.register_user(username, email, phone, pwd)
-            if success:
-                msg_label.config(text=msg, fg=ModernUI.COLORS['accent_success'])
-                win.after(2000, win.destroy)
-            else:
-                msg_label.config(text=msg)
-        btn = ModernUI.create_gradient_button(card.content, "Register", do_register, 'success')
-        btn.pack(pady=10)
-
-    def show_password_reset(self):
-        win = tk.Toplevel(self.root)
-        win.title("Reset Password")
-        win.geometry("400x300")
-        win.configure(bg=ModernUI.COLORS['bg_dark'])
-        win.transient(self.root)
-        win.grab_set()
-        card = ModernCard(win, title="Reset Password")
-        card.pack(fill='both', expand=True, padx=20, pady=20)
-        tk.Label(card.content, text="Email:", fg=ModernUI.COLORS['text_secondary'], bg=ModernUI.COLORS['bg_card']).pack(anchor='w', pady=5)
-        email_ent = tk.Entry(card.content, width=30, bg=ModernUI.COLORS['bg_sidebar'], fg='white', bd=0)
-        email_ent.pack(fill='x', pady=5)
-        ModernUI.add_glow_effect(email_ent)
-        msg = tk.Label(card.content, text="", fg=ModernUI.COLORS['accent_danger'], bg=ModernUI.COLORS['bg_card'])
-        msg.pack(pady=10)
-        def do_reset():
-            email = email_ent.get().strip()
-            if not email:
-                msg.config(text="Email required")
-                return
-            success, resp = self.user_manager.request_password_reset(email)
-            msg.config(text=resp, fg=ModernUI.COLORS['accent_success'] if success else ModernUI.COLORS['accent_danger'])
-            if success:
-                win.after(3000, win.destroy)
-        btn = ModernUI.create_gradient_button(card.content, "Send Reset Link", do_reset, 'primary')
-        btn.pack(pady=10)
+        self.root.unbind('<Return>')
+        self.current_user = {"id": "local-desktop-user", "username": "Trader", "email": ""}
+        self.is_logged_in = True
+        self.show_main_app()
 
     # ---------- Helper Methods ----------
     def fetch_active_symbols(self, app_id: str):

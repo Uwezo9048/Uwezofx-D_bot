@@ -5,7 +5,7 @@ This folder is a separate Flask web version of your desktop `tkinter` app, prepa
 ## What it does now
 
 - Keeps your current desktop bot untouched
-- Uses the same `SupabaseUserManager` backend as the desktop app for login, registration, and password reset
+- Starts with a local Connect button instead of username, login code, or account checks
 - Uses the same `DerivBot` trading engine as the desktop app for bot start/stop, mode changes, positions, history, logs, and manual trades
 - Reuses the same logo and icon assets in the browser tab and dashboard
 
@@ -22,7 +22,6 @@ python app.py
 - Create a new Render Web Service, not a Background Worker, because this project serves HTTP pages and a health endpoint
 - Render can use the root [render.yaml](c:/Users/Steph/Desktop/UwezoFx%20D_Bot/render.yaml:1) blueprint or equivalent dashboard settings
 - Install dependencies from the root [requirements.txt](c:/Users/Steph/Desktop/UwezoFx%20D_Bot/requirements.txt:1)
-- Add the same environment variables your desktop app uses for Supabase and optional email/SMS integrations
 - Set `FLASK_SECRET_KEY` in Render so sessions are secure
 - Render health checks can use `/healthz`
 - Your public app will start through Gunicorn with `gunicorn --chdir webapp app:app`

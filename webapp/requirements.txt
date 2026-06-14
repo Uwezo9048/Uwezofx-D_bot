@@ -8,5 +8,3 @@ qrcode[pil]
 python-dotenv
 requests
 websockets
-sib-api-v3-sdk
-africastalking

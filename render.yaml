@@ -12,10 +12,6 @@ services:
         value: 3.11.9
       - key: FLASK_SECRET_KEY
         generateValue: true
-      - key: SUPABASE_URL
-        sync: false
-      - key: SUPABASE_KEY
-        sync: false
       - key: DERIV_APP_ID
         sync: false
       - key: DERIV_PAT_APP_ID
@@ -23,14 +19,4 @@ services:
       - key: DERIV_OAUTH_APP_ID
         sync: false
       - key: DERIV_LEGACY_APP_ID
-        sync: false
-      - key: BREVO_API_KEY
-        sync: false
-      - key: FROM_EMAIL
-        sync: false
-      - key: AT_USERNAME
-        sync: false
-      - key: AT_API_KEY
-        sync: false
-      - key: ADMIN_PHONE
         sync: false
